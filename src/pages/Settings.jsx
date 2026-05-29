@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Save, Globe, Store, Printer, Link, Trash2, Eye, EyeOff } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Save, Globe, Store, Printer, Link, Trash2, Eye, EyeOff, Download, Monitor, Smartphone } from 'lucide-react'
 import useStore from '../store/useStore'
 import ReceiptTemplate from '../components/Print/ReceiptTemplate'
 
@@ -33,6 +33,23 @@ export default function Settings() {
   const [newCategory, setNewCategory] = useState('')
   const [saved, setSaved] = useState(false)
   const [showReceiptPreview, setShowReceiptPreview] = useState(false)
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [isInstalled, setIsInstalled] = useState(false)
+
+  useEffect(() => {
+    if (window._cachedPWAPrompt) setInstallPrompt(window._cachedPWAPrompt)
+    const handler = (e) => { e.preventDefault(); window._cachedPWAPrompt = e; setInstallPrompt(e) }
+    window.addEventListener('beforeinstallprompt', handler)
+    if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) setIsInstalled(true)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstall = async () => {
+    if (!installPrompt) return
+    installPrompt.prompt()
+    const { outcome } = await installPrompt.userChoice
+    if (outcome === 'accepted') { window._cachedPWAPrompt = null; setInstallPrompt(null); setIsInstalled(true) }
+  }
 
   const handleSave = () => {
     updateSettings(form)
@@ -215,6 +232,64 @@ export default function Settings() {
             <span key={c} className="bg-gray-100 text-gray-700 text-sm px-3 py-1.5 rounded-full">{c}</span>
           ))}
         </div>
+      </div>
+
+      {/* Install App */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <div className="flex items-center gap-2 mb-4">
+          <Download size={18} className="text-gray-700" />
+          <h3 className="font-bold text-gray-900">Install as Desktop App</h3>
+        </div>
+
+        {isInstalled ? (
+          <div className="flex items-center gap-3 bg-green-50 border border-green-100 rounded-xl px-4 py-3">
+            <Monitor size={20} className="text-green-600 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-green-800">Thunder POS is installed</p>
+              <p className="text-xs text-green-600">Running as a desktop app — no browser needed</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">Install Thunder POS on your computer or phone for faster access — no browser needed.</p>
+
+            {installPrompt ? (
+              <button
+                onClick={handleInstall}
+                className="flex items-center gap-2 bg-black text-white px-5 py-3 rounded-xl font-semibold text-sm hover:bg-gray-800 transition-colors"
+              >
+                <Download size={16} /> Install Thunder POS
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Manual install steps:</p>
+                <div className="grid gap-3">
+                  <div className="flex gap-3 items-start bg-gray-50 rounded-xl p-3">
+                    <Monitor size={18} className="text-gray-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-gray-600">
+                      <p className="font-semibold text-gray-800 mb-0.5">Chrome / Edge (Desktop)</p>
+                      <p>Click the <strong>⊕</strong> icon in the address bar, or go to<br />menu (⋮) → <em>Save and share</em> → <em>Install page as app</em></p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 items-start bg-gray-50 rounded-xl p-3">
+                    <Smartphone size={18} className="text-gray-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-gray-600">
+                      <p className="font-semibold text-gray-800 mb-0.5">iPhone / iPad (Safari)</p>
+                      <p>Tap the <strong>Share</strong> button → <em>Add to Home Screen</em></p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 items-start bg-gray-50 rounded-xl p-3">
+                    <Smartphone size={18} className="text-gray-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-gray-600">
+                      <p className="font-semibold text-gray-800 mb-0.5">Android (Chrome)</p>
+                      <p>Tap menu (⋮) → <em>Add to Home Screen</em> or <em>Install app</em></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Danger Zone */}

@@ -17,20 +17,29 @@ const PAGE_TITLES = {
   sales: 'Sales',
 }
 
+// Capture the install prompt at module level — fires before React mounts
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  window._cachedPWAPrompt = e
+})
+
 export default function Header({ page, syncError, onMenuClick }) {
   const settings = useStore((s) => s.settings)
   const [installPrompt, setInstallPrompt] = useState(null)
   const [installed, setInstalled] = useState(false)
 
   useEffect(() => {
-    // Capture the browser install prompt event
+    // Pick up any prompt that fired before this component mounted
+    if (window._cachedPWAPrompt) setInstallPrompt(window._cachedPWAPrompt)
+
+    // Also listen for prompts fired after mount
     const handler = (e) => {
       e.preventDefault()
+      window._cachedPWAPrompt = e
       setInstallPrompt(e)
     }
     window.addEventListener('beforeinstallprompt', handler)
 
-    // Detect if already installed (standalone mode)
     if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
       setInstalled(true)
     }
@@ -43,6 +52,7 @@ export default function Header({ page, syncError, onMenuClick }) {
     installPrompt.prompt()
     const { outcome } = await installPrompt.userChoice
     if (outcome === 'accepted') {
+      window._cachedPWAPrompt = null
       setInstallPrompt(null)
       setInstalled(true)
     }
