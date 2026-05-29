@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Component } from 'react'
 import { isConfigured } from './lib/supabase'
 import useStore from './store/useStore'
 import Sidebar from './components/Layout/Sidebar'
@@ -16,6 +16,31 @@ import Reports from './pages/Reports'
 import CashManagement from './pages/CashManagement'
 import Settings from './pages/Settings'
 import Sales from './pages/Sales'
+
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null } }
+  static getDerivedStateFromError(error) { return { error } }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen bg-gray-100 flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl p-8 shadow-sm border border-red-100 max-w-md w-full text-center space-y-4">
+            <div className="text-4xl">⚠️</div>
+            <h2 className="text-xl font-bold text-gray-900">Something went wrong</h2>
+            <p className="text-sm text-gray-500">{this.state.error?.message || 'An unexpected error occurred.'}</p>
+            <button
+              onClick={() => { this.setState({ error: null }); window.location.reload() }}
+              className="bg-black text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors"
+            >
+              Reload App
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const PAGES = {
   dashboard: Dashboard,
@@ -59,24 +84,23 @@ export default function App() {
   const PageComponent = PAGES[page] || Dashboard
 
   return (
-    <div className="flex min-h-screen bg-gray-100 font-sans">
-      {/* Mobile backdrop */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      <Sidebar page={page} setPage={navigate} open={sidebarOpen} />
-
-      <div className="flex-1 flex flex-col lg:ml-60 min-w-0">
-        <Header page={page} syncError={syncError} onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
-          <PageComponent />
-        </main>
+    <ErrorBoundary>
+      <div className="flex min-h-screen bg-gray-100 font-sans">
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        <Sidebar page={page} setPage={navigate} open={sidebarOpen} />
+        <div className="flex-1 flex flex-col lg:ml-60 min-w-0">
+          <Header page={page} syncError={syncError} onMenuClick={() => setSidebarOpen(true)} />
+          <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
+            <PageComponent />
+          </main>
+        </div>
+        <Toast />
       </div>
-      <Toast />
-    </div>
+    </ErrorBoundary>
   )
 }

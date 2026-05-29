@@ -19,6 +19,7 @@ export default function POS() {
   const createSale = useStore((s) => s.createSale)
   const addToast = useStore((s) => s.addToast)
   const currency = settings.currency
+  const [clearConfirm, setClearConfirm] = useState(false)
 
   // ── Cart state ────────────────────────────────────────────────
   const [cart, setCart] = useState([])
@@ -99,17 +100,21 @@ export default function POS() {
 
   // ── Barcode scanner ───────────────────────────────────────────
   const lookupBarcode = useCallback((code) => {
-    const product = products.find((p) => p.barcode === code.trim())
+    const trimmed = code.trim()
+    const product = products.find((p) => p.barcode === trimmed)
     if (product) {
       const sizesWithStock = Object.entries(product.stock || {}).filter(([, q]) => q > 0)
-      if (sizesWithStock.length === 0) { alert(`${product.name} is out of stock.`); return }
+      if (sizesWithStock.length === 0) {
+        addToast(`${product.name} is out of stock`, 'error')
+        return
+      }
       if (sizesWithStock.length === 1) addToCart(product, sizesWithStock[0][0])
       else setSizeModal({ product })
     } else {
-      alert(`No product found for barcode: ${code}`)
+      addToast(`No product found for barcode: ${trimmed}`, 'error')
     }
     setBarcodeInput('')
-  }, [products])
+  }, [products, addToast])
 
   const handleBarcodeKeyDown = (e) => {
     if (e.key === 'Enter' && barcodeInput.trim()) lookupBarcode(barcodeInput)
@@ -136,11 +141,14 @@ export default function POS() {
 
   // ── Cart helpers ──────────────────────────────────────────────
   const addToCart = (product, size) => {
+    const maxStock = product.stock?.[size] || 0
     setCart((prev) => {
       const existing = prev.find((i) => i.productId === product.id && i.size === size)
       if (existing) {
-        const maxStock = product.stock[size] || 0
-        if (existing.quantity >= maxStock) { alert(`Only ${maxStock} in stock for size ${size}`); return prev }
+        if (existing.quantity >= maxStock) {
+          addToast(`Only ${maxStock} in stock for size ${size}`, 'error')
+          return prev
+        }
         return prev.map((i) => i.productId === product.id && i.size === size ? { ...i, quantity: i.quantity + 1 } : i)
       }
       return [...prev, {
@@ -162,7 +170,7 @@ export default function POS() {
 
   const handlePickProduct = (product) => {
     const sizesWithStock = Object.entries(product.stock || {}).filter(([, q]) => q > 0)
-    if (sizesWithStock.length === 0) return alert(`${product.name} is out of stock`)
+    if (sizesWithStock.length === 0) { addToast(`${product.name} is out of stock`, 'error'); return }
     if (sizesWithStock.length === 1) addToCart(product, sizesWithStock[0][0])
     else setSizeModal({ product })
   }
@@ -177,15 +185,21 @@ export default function POS() {
     setCart((prev) => prev.map((i) => i.productId === productId && i.size === size ? { ...i, unitPrice: parseFloat(newPrice) || 0 } : i))
 
   const clearCart = () => {
-    if (cart.length > 0 && !confirm('Clear cart?')) return
-    setCart([]); setDiscount(0); setAmountPaid('')
+    if (cart.length === 0) return
+    if (clearConfirm) {
+      setCart([]); setDiscount(0); setAmountPaid(''); setClearConfirm(false)
+    } else {
+      setClearConfirm(true)
+      setTimeout(() => setClearConfirm(false), 3000)
+    }
   }
 
   // ── Complete sale ─────────────────────────────────────────────
   const openPreview = () => {
-    if (cart.length === 0) return alert('Cart is empty')
-    if (paymentMethod === 'cash' && parseFloat(amountPaid) > 0 && parseFloat(amountPaid) < total)
-      return alert('Amount paid is less than the total')
+    if (cart.length === 0) { addToast('Cart is empty', 'error'); return }
+    if (paymentMethod === 'cash' && parseFloat(amountPaid) > 0 && parseFloat(amountPaid) < total) {
+      addToast('Amount paid is less than the total', 'error'); return
+    }
     setPreviewModal(true)
   }
 
@@ -303,8 +317,11 @@ export default function POS() {
               Cart{cart.length > 0 && <span className="ml-2 bg-black text-white text-xs px-2 py-0.5 rounded-full">{cart.reduce((a, i) => a + i.quantity, 0)}</span>}
             </h3>
             {cart.length > 0 && (
-              <button onClick={clearCart} className="text-red-500 text-sm hover:text-red-600 flex items-center gap-1">
-                <XCircle size={14} /> Clear
+              <button
+                onClick={clearCart}
+                className={`text-sm flex items-center gap-1 transition-colors ${clearConfirm ? 'text-red-600 font-semibold' : 'text-red-400 hover:text-red-600'}`}
+              >
+                <XCircle size={14} /> {clearConfirm ? 'Tap again to clear' : 'Clear'}
               </button>
             )}
           </div>

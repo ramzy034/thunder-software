@@ -69,40 +69,45 @@ export default function CameraScanner({ onScan, onClose }) {
       setScanning(false)
       setTorchSupported(false)
 
-      const reader = new BrowserMultiFormatReader(HINTS, { delayBetweenScanAttempts: 50 })
+      const reader = new BrowserMultiFormatReader(HINTS, { delayBetweenScanAttempts: 100 })
       readerRef.current = reader
 
-      // HD resolution + continuous autofocus
       const constraints = {
         video: {
           facingMode: { ideal: front ? 'user' : 'environment' },
-          width: { ideal: 1920, min: 640 },
-          height: { ideal: 1080, min: 480 },
+          width: { ideal: 1280, min: 480 },
+          height: { ideal: 720, min: 360 },
         },
       }
 
-      try {
-        const controls = await reader.decodeFromConstraints(
-          constraints,
-          videoRef.current,
-          (result, err, ctrl) => {
-            if (result) {
-              const value = result.getText()
-              const now = Date.now()
-              const last = lastScanRef.current
-              // Debounce: ignore same code within 1.5s
-              if (value !== last.value || now - last.time >= 1500) {
-                lastScanRef.current = { value, time: now }
-                beep()
-                if (navigator.vibrate) navigator.vibrate(80)
-                setFlashFrame(true)
-                setTimeout(() => setFlashFrame(false), 300)
-                onScan(value)
-              }
-            }
-          }
-        )
+      // Called when a barcode is successfully detected
+      const handleDetected = (value) => {
+        const now = Date.now()
+        const last = lastScanRef.current
+        if (value === last.value && now - last.time < 1500) return
+        lastScanRef.current = { value, time: now }
 
+        // Stop ZXing IMMEDIATELY — prevents callbacks firing after unmount
+        try { readerRef.current?.reset() } catch {}
+        readerRef.current = null
+
+        // Visual + audio feedback
+        try { beep() } catch {}
+        try { if (navigator.vibrate) navigator.vibrate(80) } catch {}
+        setFlashFrame(true)
+
+        // Brief delay so user sees the "✓ Scanned!" flash, then notify parent
+        setTimeout(() => {
+          try { onScan(value) } catch {}
+        }, 250)
+      }
+
+      const decodeCallback = (result) => {
+        if (result) handleDetected(result.getText())
+      }
+
+      try {
+        await reader.decodeFromConstraints(constraints, videoRef.current, decodeCallback)
         setScanning(true)
         setPermState('ready')
 
@@ -124,26 +129,8 @@ export default function CameraScanner({ onScan, onClose }) {
           setError('Camera is in use by another app. Close other apps and try again.')
           setPermState('ready')
         } else if (err.name === 'OverconstrainedError') {
-          // Retry without resolution constraints
           try {
-            await reader.decodeFromConstraints(
-              { video: { facingMode: { ideal: front ? 'user' : 'environment' } } },
-              videoRef.current,
-              (result) => {
-                if (result) {
-                  const value = result.getText()
-                  const now = Date.now()
-                  const last = lastScanRef.current
-                  if (value !== last.value || now - last.time >= 1500) {
-                    lastScanRef.current = { value, time: now }
-                    beep()
-                    setFlashFrame(true)
-                    setTimeout(() => setFlashFrame(false), 300)
-                    onScan(value)
-                  }
-                }
-              }
-            )
+            await reader.decodeFromConstraints({ video: true }, videoRef.current, decodeCallback)
             setScanning(true)
             setPermState('ready')
           } catch (e2) {
