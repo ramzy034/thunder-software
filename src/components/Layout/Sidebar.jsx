@@ -1,16 +1,6 @@
 import {
-  LayoutDashboard,
-  ShoppingCart,
-  Package,
-  Truck,
-  Tag,
-  Receipt,
-  TrendingDown,
-  BarChart2,
-  Wallet,
-  Settings,
-  Barcode,
-  ShoppingBag,
+  LayoutDashboard, ShoppingCart, Package, Truck, Tag, Receipt,
+  TrendingDown, BarChart2, Wallet, Settings, Barcode, ShoppingBag,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -28,11 +18,20 @@ const NAV = [
   { key: 'settings', label: 'Settings', icon: Settings },
 ]
 
-export default function Sidebar({ page, setPage }) {
+export default function Sidebar({ page, setPage, open }) {
   return (
-    <aside className="fixed left-0 top-0 h-screen w-60 bg-black flex flex-col z-30">
+    <aside
+      className={clsx(
+        'fixed left-0 top-0 h-screen w-60 bg-black flex flex-col z-30',
+        'transition-transform duration-300 ease-in-out',
+        // Mobile: hide by default, slide in when open
+        open ? 'translate-x-0' : '-translate-x-full',
+        // Desktop: always visible
+        'lg:translate-x-0',
+      )}
+    >
       {/* Logo */}
-      <div className="px-6 py-7 border-b border-white/10">
+      <div className="px-6 py-7 border-b border-white/10 flex-shrink-0">
         <span className="text-white font-extrabold text-2xl tracking-tight">thunder</span>
         <span className="block text-gray-500 text-xs mt-0.5">Point of Sale</span>
       </div>
@@ -57,7 +56,7 @@ export default function Sidebar({ page, setPage }) {
       </nav>
 
       {/* Version */}
-      <div className="px-5 py-4 border-t border-white/10">
+      <div className="px-5 py-4 border-t border-white/10 flex-shrink-0">
         <p className="text-gray-600 text-xs">Thunder POS v1.0</p>
       </div>
     </aside>

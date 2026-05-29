@@ -49,7 +49,7 @@ export default function Settings() {
   const previewSettings = { ...settings, ...form }
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-3xl w-full space-y-6">
       {/* Store Info */}
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
         <div className="flex items-center gap-2 mb-5">

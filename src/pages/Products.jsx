@@ -222,8 +222,8 @@ export default function Products() {
   return (
     <div className="space-y-5">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
           <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5">
             <Search size={15} className="text-gray-400" />
             <input

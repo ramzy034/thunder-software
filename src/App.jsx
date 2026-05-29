@@ -43,13 +43,14 @@ function LoadingScreen() {
 
 export default function App() {
   const [page, setPage] = useState('dashboard')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const init = useStore((s) => s.init)
   const loading = useStore((s) => s.loading)
   const syncError = useStore((s) => s.syncError)
 
-  useEffect(() => {
-    init()
-  }, [init])
+  useEffect(() => { init() }, [init])
+
+  const navigate = (p) => { setPage(p); setSidebarOpen(false) }
 
   if (!isConfigured) return <SetupScreen />
   if (loading) return <LoadingScreen />
@@ -58,10 +59,19 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen bg-gray-100 font-sans">
-      <Sidebar page={page} setPage={setPage} />
-      <div className="flex-1 flex flex-col ml-60">
-        <Header page={page} syncError={syncError} />
-        <main className="flex-1 p-6 overflow-y-auto">
+      {/* Mobile backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <Sidebar page={page} setPage={navigate} open={sidebarOpen} />
+
+      <div className="flex-1 flex flex-col lg:ml-60 min-w-0">
+        <Header page={page} syncError={syncError} onMenuClick={() => setSidebarOpen(true)} />
+        <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
           <PageComponent />
         </main>
       </div>

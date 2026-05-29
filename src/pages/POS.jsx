@@ -193,9 +193,9 @@ export default function POS() {
   }
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-120px)]">
+    <div className="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-88px)]">
       {/* ── Left: Scanner + Search + Cart ── */}
-      <div className="flex-1 flex flex-col gap-3 min-w-0">
+      <div className="flex-1 flex flex-col gap-3 min-w-0 overflow-y-auto">
 
         {/* Barcode Scanner */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
@@ -205,7 +205,7 @@ export default function POS() {
               <input
                 ref={barcodeRef}
                 type="text"
-                placeholder="Scan barcode or type product code — press Enter"
+                placeholder="Scan or type barcode — Enter"
                 value={barcodeInput}
                 onChange={(e) => setBarcodeInput(e.target.value)}
                 onKeyDown={handleBarcodeKeyDown}
@@ -345,7 +345,7 @@ export default function POS() {
       </div>
 
       {/* ── Right: Payment Panel ── */}
-      <div className="w-72 flex flex-col gap-4">
+      <div className="w-full lg:w-72 flex flex-col gap-4 flex-shrink-0">
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col gap-4 flex-1">
           <h3 className="font-bold text-gray-900">Payment</h3>
 
