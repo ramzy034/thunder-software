@@ -43,7 +43,7 @@ export default function Reports() {
 
   const filteredSales = useMemo(
     () => confirmedSales.filter((s) => new Date(s.createdAt) >= start && new Date(s.createdAt) <= end),
-    [sales, start, end]
+    [confirmedSales, start, end]
   )
 
   const filteredExpenses = useMemo(

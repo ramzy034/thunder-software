@@ -23,6 +23,7 @@ export default function Sales() {
   const settings = useStore((s) => s.settings)
   const confirmSale = useStore((s) => s.confirmSale)
   const rejectSale = useStore((s) => s.rejectSale)
+  const addToast = useStore((s) => s.addToast)
   const addManualSale = useStore((s) => s.addManualSale)
   const currency = settings.currency
 
@@ -82,9 +83,10 @@ export default function Sales() {
   const total = Math.max(0, subtotal - discountAmt)
 
   const addItem = () => {
-    if (!selProduct || !selSize) return
+    if (!selProduct) return addToast('Select a product first', 'error')
+    if (!selSize) return addToast('Select a size first', 'error')
     const stock = selProduct.stock?.[selSize] || 0
-    if (qty < 1 || qty > stock) return alert(`Only ${stock} in stock for size ${selSize}`)
+    if (qty < 1 || qty > stock) return addToast(`Only ${stock} in stock for size ${selSize}`, 'error')
     setItems((prev) => {
       const ex = prev.find((i) => i.productId === selProduct.id && i.size === selSize)
       if (ex) return prev.map((i) => i.productId === selProduct.id && i.size === selSize ? { ...i, quantity: i.quantity + qty } : i)

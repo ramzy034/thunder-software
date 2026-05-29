@@ -616,6 +616,7 @@ const useStore = create((set, get) => ({
       },
     })
     get()._saveAppState()
+    get().addToast(`${type === 'in' ? 'Cash in' : 'Cash out'} recorded`)
   },
 
   // ─── Settings ─────────────────────────────────────────
