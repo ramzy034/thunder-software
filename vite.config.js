@@ -45,6 +45,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // New service worker activates immediately without waiting for all tabs to close
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         runtimeCaching: [
           {
