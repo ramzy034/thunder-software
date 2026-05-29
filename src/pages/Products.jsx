@@ -130,6 +130,7 @@ export default function Products() {
   const [stockEdits, setStockEdits] = useState({})
   const [newSizeInput, setNewSizeInput] = useState('')
   const [customSizeInput, setCustomSizeInput] = useState('')
+  const [saving, setSaving] = useState(false)
 
   // ── Bulk selection ────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState([])
@@ -181,7 +182,7 @@ export default function Products() {
       setForm((f) => ({ ...f, colors: [...f.colors, colorInput] }))
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim()) return alert('Product name is required')
     if (!form.sellPrice) return alert('Selling price is required')
     const stock = form.sizes.length > 0
@@ -194,14 +195,17 @@ export default function Products() {
       stock,
       sizes: form.sizes.length > 0 ? form.sizes : ['One Size'],
     }
-    if (editingProduct) updateProduct(editingProduct.id, data)
-    else addProduct(data)
-    setModalOpen(false)
+    setSaving(true)
+    const ok = editingProduct
+      ? await updateProduct(editingProduct.id, data)
+      : await addProduct(data)
+    setSaving(false)
+    if (ok !== false) setModalOpen(false)
   }
 
-  const handleDelete = (id, name) => {
+  const handleDelete = async (id, name) => {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return
-    deleteProduct(id)
+    await deleteProduct(id)
   }
 
   const openStockModal = (product) => { setStockModal(product); setStockEdits({ ...product.stock }) }
@@ -735,9 +739,10 @@ export default function Products() {
           </div>
 
           <div className="flex gap-3 pt-2">
-            <button onClick={() => setModalOpen(false)} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
-            <button onClick={handleSave} className="flex-1 bg-black text-white rounded-xl py-2.5 text-sm font-medium hover:bg-gray-800 transition-colors">
-              {editingProduct ? 'Save Changes' : 'Add Product'}
+            <button onClick={() => setModalOpen(false)} disabled={saving} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">Cancel</button>
+            <button onClick={handleSave} disabled={saving} className="flex-1 bg-black text-white rounded-xl py-2.5 text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+              {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {saving ? 'Saving…' : editingProduct ? 'Save Changes' : 'Add Product'}
             </button>
           </div>
         </div>

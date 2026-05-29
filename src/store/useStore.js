@@ -37,12 +37,31 @@ const DEFAULT_CATEGORIES = [
   'Accessories',
 ]
 
-// Fire-and-forget Supabase write — shows a toast on failure
+// Await a Supabase write and return { ok, error }
+// Supabase v2 NEVER rejects — it resolves with { data, error }.
+// Old .catch() approach missed all DB errors. This checks error explicitly.
+const writeDB = async (fn) => {
+  if (!isConfigured || !supabase) return { ok: true }
+  try {
+    const result = await fn()
+    if (result?.error) {
+      console.error('[POS WriteDB]', result.error)
+      return { ok: false, error: result.error.message || 'Database error' }
+    }
+    return { ok: true }
+  } catch (err) {
+    console.error('[POS WriteDB]', err)
+    return { ok: false, error: err.message || 'Network error' }
+  }
+}
+
+// Fire-and-forget for non-critical background syncs (status updates, app state)
 const syncDB = (fn) => {
   if (!isConfigured || !supabase) return
-  fn().catch((err) => {
-    console.error('[POS Sync]', err)
-    try { useStore.getState().addToast('Sync error — data may not have saved. Check your connection.', 'error') } catch {}
+  writeDB(fn).then(({ ok, error }) => {
+    if (!ok) {
+      try { useStore.getState().addToast(`Sync error: ${error}`, 'error') } catch {}
+    }
   })
 }
 
@@ -301,7 +320,7 @@ const useStore = create((set, get) => ({
   },
 
   // ─── Products ────────────────────────────────────────
-  addProduct: (product) => {
+  addProduct: async (product) => {
     const newProduct = {
       id: uuidv4(),
       sku: generateSKU(),
@@ -311,41 +330,97 @@ const useStore = create((set, get) => ({
       createdAt: new Date().toISOString(),
       ...product,
     }
+    // Optimistic update — show immediately
     set((s) => ({ products: [newProduct, ...s.products] }))
-    syncDB(() =>
+
+    const { ok, error } = await writeDB(() =>
       supabase.from('products').insert({ id: newProduct.id, data: newProduct, created_at: newProduct.createdAt })
     )
+
+    if (!ok) {
+      // Rollback — remove the product we optimistically added
+      set((s) => ({ products: s.products.filter((p) => p.id !== newProduct.id) }))
+      get().addToast(`Failed to save product: ${error}`, 'error')
+      return false
+    }
+
     get().addToast(`"${newProduct.name}" added`)
+    return true
   },
 
-  updateProduct: (id, updates) => {
+  updateProduct: async (id, updates) => {
+    const previous = get().products.find((p) => p.id === id)
     set((s) => ({
       products: s.products.map((p) => (p.id === id ? { ...p, ...updates } : p)),
     }))
     const updated = get().products.find((p) => p.id === id)
-    if (updated) syncDB(() => supabase.from('products').update({ data: updated }).eq('id', id))
+
+    if (updated) {
+      const { ok, error } = await writeDB(() =>
+        supabase.from('products').update({ data: updated }).eq('id', id)
+      )
+      if (!ok) {
+        // Rollback
+        if (previous) set((s) => ({ products: s.products.map((p) => (p.id === id ? previous : p)) }))
+        get().addToast(`Failed to update product: ${error}`, 'error')
+        return false
+      }
+    }
+
     get().addToast('Product saved')
+    return true
   },
 
-  deleteProduct: (id) => {
+  deleteProduct: async (id) => {
+    const previous = get().products.find((p) => p.id === id)
     set((s) => ({ products: s.products.filter((p) => p.id !== id) }))
-    syncDB(() => supabase.from('products').delete().eq('id', id))
+
+    const { ok, error } = await writeDB(() =>
+      supabase.from('products').delete().eq('id', id)
+    )
+    if (!ok) {
+      // Rollback
+      if (previous) set((s) => ({ products: [previous, ...s.products] }))
+      get().addToast(`Failed to delete product: ${error}`, 'error')
+      return false
+    }
+
     get().addToast('Product deleted')
+    return true
   },
 
-  bulkUpdateProducts: (ids, updates) => {
+  bulkUpdateProducts: async (ids, updates) => {
+    const previous = get().products.filter((p) => ids.includes(p.id))
     set((s) => ({
       products: s.products.map((p) => (ids.includes(p.id) ? { ...p, ...updates } : p)),
     }))
     const affected = get().products.filter((p) => ids.includes(p.id))
-    affected.forEach((p) => syncDB(() => supabase.from('products').update({ data: p }).eq('id', p.id)))
-    get().addToast(`${ids.length} product${ids.length !== 1 ? 's' : ''} updated`)
+    const results = await Promise.all(
+      affected.map((p) => writeDB(() => supabase.from('products').update({ data: p }).eq('id', p.id)))
+    )
+    const failed = results.some((r) => !r.ok)
+    if (failed) {
+      // Rollback
+      set((s) => ({ products: s.products.map((p) => previous.find((pr) => pr.id === p.id) || p) }))
+      get().addToast('Bulk update failed — please try again', 'error')
+    } else {
+      get().addToast(`${ids.length} product${ids.length !== 1 ? 's' : ''} updated`)
+    }
   },
 
-  bulkDeleteProducts: (ids) => {
+  bulkDeleteProducts: async (ids) => {
+    const previous = get().products.filter((p) => ids.includes(p.id))
     set((s) => ({ products: s.products.filter((p) => !ids.includes(p.id)) }))
-    ids.forEach((id) => syncDB(() => supabase.from('products').delete().eq('id', id)))
-    get().addToast(`${ids.length} product${ids.length !== 1 ? 's' : ''} deleted`)
+    const results = await Promise.all(
+      ids.map((id) => writeDB(() => supabase.from('products').delete().eq('id', id)))
+    )
+    const failed = results.some((r) => !r.ok)
+    if (failed) {
+      set((s) => ({ products: [...previous, ...s.products] }))
+      get().addToast('Bulk delete failed — please try again', 'error')
+    } else {
+      get().addToast(`${ids.length} product${ids.length !== 1 ? 's' : ''} deleted`)
+    }
   },
 
   // ─── Categories ──────────────────────────────────────
