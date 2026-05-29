@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, CheckCircle, XCircle, ShoppingBag, User, Phone, Calendar } from 'lucide-react'
+import { Plus, Search, CheckCircle, XCircle, ShoppingBag, RefreshCw, User, Phone, Calendar } from 'lucide-react'
 import useStore from '../store/useStore'
 import Modal from '../components/UI/Modal'
 import { formatCurrency, formatDateTime } from '../utils/format'
@@ -25,7 +25,10 @@ export default function Sales() {
   const rejectSale = useStore((s) => s.rejectSale)
   const addToast = useStore((s) => s.addToast)
   const addManualSale = useStore((s) => s.addManualSale)
+  const fetchWebsiteOrders = useStore((s) => s.fetchWebsiteOrders)
+  const lastWebsiteOrderSync = useStore((s) => s.lastWebsiteOrderSync)
   const currency = settings.currency
+  const [syncing, setSyncing] = useState(false)
 
   const [tab, setTab] = useState('all')
   const [search, setSearch] = useState('')
@@ -114,9 +117,26 @@ export default function Sales() {
           <h2 className="text-lg font-bold text-gray-900">Sales</h2>
           <p className="text-sm text-gray-500">Confirm POS receipts · Add manual sales · Track website orders</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="bg-black text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 hover:bg-gray-800 transition-colors">
-          <Plus size={16} /> Add Sale
-        </button>
+        <div className="flex items-center gap-2">
+          {settings.websiteUrl && settings.apiKey && (
+            <button
+              onClick={async () => { setSyncing(true); await fetchWebsiteOrders(); setSyncing(false) }}
+              disabled={syncing}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border border-orange-200 bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+              {syncing ? 'Syncing...' : 'Sync Website'}
+              {lastWebsiteOrderSync && !syncing && (
+                <span className="text-xs text-orange-400 font-normal">
+                  {new Date(lastWebsiteOrderSync).toLocaleTimeString()}
+                </span>
+              )}
+            </button>
+          )}
+          <button onClick={() => setShowAdd(true)} className="bg-black text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 hover:bg-gray-800 transition-colors">
+            <Plus size={16} /> Add Sale
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center justify-between gap-4 flex-wrap">

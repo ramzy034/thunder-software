@@ -668,14 +668,131 @@ const useStore = create((set, get) => ({
     return sale
   },
 
-  syncProductToWebsite: (id) => {
-    set((s) => ({
-      products: s.products.map((p) =>
-        p.id === id ? { ...p, websiteSynced: true, websiteSyncedAt: new Date().toISOString() } : p
-      ),
-    }))
+  syncProductToWebsite: async (id) => {
     const product = get().products.find((p) => p.id === id)
-    if (product) syncDB(() => supabase.from('products').update({ data: product }).eq('id', id))
+    if (!product) return
+
+    const { websiteUrl, apiKey } = get().settings
+    if (!websiteUrl || !apiKey) {
+      get().addToast('Set Website URL and API key in Settings first', 'error')
+      return
+    }
+
+    try {
+      const endpoint = websiteUrl.replace(/\/$/, '') + '/pos-sync.php'
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify({
+          name: product.name,
+          description: product.description || '',
+          sellPrice: product.sellPrice,
+          oldPrice: product.sellPrice,
+          category: product.category || '',
+          sizes: product.sizes || [],
+          stock: product.stock || {},
+          colors: product.colors || [],
+          image: product.image || '',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        get().addToast(data.error || 'Website sync failed', 'error')
+        return
+      }
+      set((s) => ({
+        products: s.products.map((p) =>
+          p.id === id ? { ...p, websiteSynced: true, websiteSyncedAt: new Date().toISOString() } : p
+        ),
+      }))
+      const updated = get().products.find((p) => p.id === id)
+      if (updated) syncDB(() => supabase.from('products').update({ data: updated }).eq('id', id))
+      get().addToast(`"${product.name}" added → DB id: ${data.id ?? 'none'}`)
+    } catch {
+      get().addToast('Could not reach website — check URL in Settings', 'error')
+    }
+  },
+
+  // ─── Fetch Website Orders ─────────────────────────────
+  lastWebsiteOrderSync: null,
+  fetchWebsiteOrders: async () => {
+    const { websiteUrl, apiKey } = get().settings
+    if (!websiteUrl || !apiKey) {
+      get().addToast('Set Website URL and API key in Settings first', 'error')
+      return
+    }
+    const since = get().lastWebsiteOrderSync
+    const endpoint =
+      websiteUrl.replace(/\/$/, '') +
+      '/pos-orders.php' +
+      (since ? '?since=' + encodeURIComponent(since) : '')
+    try {
+      const res = await fetch(endpoint, { headers: { 'X-API-Key': apiKey } })
+      const data = await res.json()
+      if (!res.ok) {
+        get().addToast(data.error || 'Failed to fetch orders', 'error')
+        return
+      }
+      const existing = get().sales
+      const existingNums = new Set(existing.map((s) => s.websiteOrderNum).filter(Boolean))
+
+      const newSales = (data.orders || [])
+        .filter((o) => !existingNums.has(o.num_order))
+        .map((o) => {
+          const statusMap = { processing: 'pending', pending: 'pending', completed: 'confirmed', cancelled: 'rejected' }
+          const items = (o.items || []).map((it) => ({
+            productId: null,
+            productName: it.product_name,
+            size: it.size || '—',
+            color: it.color || '',
+            quantity: it.quantity,
+            unitPrice: it.unit_price,
+            costPrice: 0,
+            barcode: '',
+          }))
+          return {
+            id: uuidv4(),
+            receiptNumber: 'WEB-' + o.num_order,
+            websiteOrderNum: o.num_order,
+            websiteSessionId: o.session_id,
+            createdAt: new Date(o.created_at).toISOString(),
+            source: 'website',
+            status: statusMap[o.status] || 'pending',
+            items,
+            subtotal: o.total,
+            discount: 0,
+            taxAmount: 0,
+            total: o.total,
+            paymentMethod: 'website',
+            amountPaid: o.total,
+            change: 0,
+            customerName: '',
+            customerContact: '',
+            notes: o.all_num_orders !== o.num_order ? 'Items: ' + o.all_num_orders : '',
+          }
+        })
+
+      if (newSales.length === 0) {
+        get().addToast('No new orders from website')
+        set({ lastWebsiteOrderSync: new Date().toISOString() })
+        return
+      }
+
+      set((s) => ({
+        sales: [...newSales, ...s.sales],
+        lastWebsiteOrderSync: new Date().toISOString(),
+      }))
+
+      newSales.forEach((sale) => {
+        syncDB(() =>
+          supabase.from('sales').insert({ id: sale.id, data: sale, created_at: sale.createdAt })
+        )
+      })
+
+      get().addToast(`${newSales.length} website order${newSales.length !== 1 ? 's' : ''} synced`)
+    } catch {
+      get().addToast('Could not reach website — check URL in Settings', 'error')
+    }
   },
 
   // ─── Expenses ─────────────────────────────────────────
