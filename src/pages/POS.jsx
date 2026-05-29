@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { useReactToPrint } from 'react-to-print'
 import {
   Search, Plus, Minus, Trash2, Printer, CheckCircle, XCircle,
   ScanLine, LayoutGrid, Eye, Package, ChevronDown, Camera,
@@ -9,6 +8,7 @@ import Modal from '../components/UI/Modal'
 import ReceiptTemplate from '../components/Print/ReceiptTemplate'
 import CameraScanner from '../components/Scanner/CameraScanner'
 import { formatCurrency, totalStock } from '../utils/format'
+import { printElement } from '../utils/printUtils'
 
 const PAYMENT_METHODS = ['cash', 'card', 'bank transfer', 'mixed']
 
@@ -43,9 +43,23 @@ export default function POS() {
   const barcodeRef = useRef(null)
   const receiptRef = useRef(null)
 
+  // Always keep barcode input focused so hardware scanners work at any time
   useEffect(() => { barcodeRef.current?.focus() }, [])
+  useEffect(() => {
+    const noModalOpen = !sizeModal && !showCameraScanner && !showProductPicker && !previewModal && !receiptModal
+    if (noModalOpen) {
+      const refocus = (e) => {
+        // Re-focus after clicking anywhere that isn't an input/select/button
+        if (!['INPUT','TEXTAREA','SELECT','BUTTON'].includes(e.target.tagName)) {
+          barcodeRef.current?.focus()
+        }
+      }
+      document.addEventListener('click', refocus)
+      return () => document.removeEventListener('click', refocus)
+    }
+  }, [sizeModal, showCameraScanner, showProductPicker, previewModal, receiptModal])
 
-  const handlePrint = useReactToPrint({ content: () => receiptRef.current })
+  const handlePrint = () => printElement(receiptRef, `Receipt ${lastSale?.receiptNumber || ''}`)
 
   // ── Calculations ──────────────────────────────────────────────
   const subtotal = cart.reduce((a, i) => a + i.unitPrice * i.quantity, 0)

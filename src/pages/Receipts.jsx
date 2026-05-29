@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react'
-import { useReactToPrint } from 'react-to-print'
 import { Search, Printer, XCircle, Eye } from 'lucide-react'
 import useStore from '../store/useStore'
 import Modal from '../components/UI/Modal'
 import ReceiptTemplate from '../components/Print/ReceiptTemplate'
 import { formatCurrency, formatDateTime } from '../utils/format'
+import { printElement } from '../utils/printUtils'
 
 export default function Receipts() {
   const sales = useStore((s) => s.sales)
@@ -17,7 +17,7 @@ export default function Receipts() {
   const [viewSale, setViewSale] = useState(null)
 
   const receiptRef = useRef(null)
-  const handlePrint = useReactToPrint({ content: () => receiptRef.current })
+  const handlePrint = () => printElement(receiptRef, `Receipt ${viewSale?.receiptNumber || ''}`)
 
   const filtered = [...sales]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))

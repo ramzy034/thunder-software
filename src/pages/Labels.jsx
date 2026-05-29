@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react'
-import { useReactToPrint } from 'react-to-print'
 import { Printer, Search } from 'lucide-react'
 import useStore from '../store/useStore'
 import LabelTemplate from '../components/Print/LabelTemplate'
+import { printElement } from '../utils/printUtils'
 
 const LABEL_SIZES = [
   { value: 'small', label: 'Small (40×20mm)', desc: '3-4 labels per row' },
@@ -22,7 +22,7 @@ export default function Labels() {
 
   const printRef = useRef(null)
 
-  const handlePrint = useReactToPrint({ content: () => printRef.current })
+  const handlePrint = () => printElement(printRef, `Labels — ${selectedProduct?.name || ''}`)
 
   const filtered = products.filter((p) =>
     !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
