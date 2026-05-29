@@ -49,10 +49,9 @@ export default function POS() {
   const receiptRef = useRef(null)
 
   // ── Shared cart sync across devices ──────────────────────────
-  // Uses Supabase Broadcast — instant real-time, no DB writes per scan.
-  // All open POS terminals share the same live cart.
   const channelRef = useRef(null)
-  const receivingRef = useRef(false)  // prevents re-broadcasting a remote update
+  const receivingRef = useRef(false)
+  const mountedRef = useRef(false)   // skip broadcast on first render
 
   useEffect(() => {
     if (!isConfigured || !supabase) return
@@ -69,18 +68,22 @@ export default function POS() {
       .subscribe()
 
     channelRef.current = channel
-    return () => { supabase.removeChannel(channel) }
+    return () => { try { supabase.removeChannel(channel) } catch {} }
   }, [])
 
-  // Broadcast cart to all other open POS terminals on any change
+  // Broadcast cart to all other open POS terminals on any change.
+  // Skip mount (mountedRef) and skip when the change came from a remote broadcast (receivingRef).
   useEffect(() => {
+    if (!mountedRef.current) { mountedRef.current = true; return }
     if (receivingRef.current) { receivingRef.current = false; return }
     if (!channelRef.current) return
-    channelRef.current.send({
-      type: 'broadcast',
-      event: 'cart',
-      payload: { cart, discount, discountType, paymentMethod },
-    })
+    try {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'cart',
+        payload: { cart, discount, discountType, paymentMethod },
+      })
+    } catch {}
   }, [cart, discount, discountType, paymentMethod])
 
   // Always keep barcode input focused so hardware scanners work at any time
@@ -178,13 +181,16 @@ export default function POS() {
   // ── Cart helpers ──────────────────────────────────────────────
   const addToCart = (product, size) => {
     const maxStock = product.stock?.[size] || 0
+    // Check stock OUTSIDE setCart — never call side effects inside a state updater
+    const existing = cart.find((i) => i.productId === product.id && i.size === size)
+    if (existing && existing.quantity >= maxStock) {
+      addToast(`Only ${maxStock} in stock for size ${size}`, 'error')
+      return
+    }
     setCart((prev) => {
-      const existing = prev.find((i) => i.productId === product.id && i.size === size)
-      if (existing) {
-        if (existing.quantity >= maxStock) {
-          addToast(`Only ${maxStock} in stock for size ${size}`, 'error')
-          return prev
-        }
+      const ex = prev.find((i) => i.productId === product.id && i.size === size)
+      if (ex) {
+        if (ex.quantity >= maxStock) return prev
         return prev.map((i) => i.productId === product.id && i.size === size ? { ...i, quantity: i.quantity + 1 } : i)
       }
       return [...prev, {
@@ -733,8 +739,13 @@ export default function POS() {
       {showCameraScanner && (
         <CameraScanner
           onScan={(code) => {
-            setShowCameraScanner(false)
-            lookupBarcode(code)
+            try {
+              setShowCameraScanner(false)
+              lookupBarcode(code)
+            } catch (err) {
+              addToast('Scan error — try again', 'error')
+              console.error('[POS scan]', err)
+            }
           }}
           onClose={() => setShowCameraScanner(false)}
         />
