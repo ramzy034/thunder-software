@@ -9,6 +9,8 @@ import { compressImage } from '../utils/imageUtils'
 const CLOTHING_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'One Size']
 const JEAN_SIZES = ['28', '30', '32', '34', '36', '38', '40']
 
+const SHIPPING_RATE = 150 // MAD per kg
+
 const emptyForm = {
   name: '',
   description: '',
@@ -18,6 +20,7 @@ const emptyForm = {
   colors: [],
   sellPrice: '',
   costPrice: '',
+  weight: '',
   barcode: '',
   image: '',
   shippingDate: '',
@@ -142,6 +145,7 @@ export default function Products() {
       barcode: product.barcode || '',
       image: product.image || '',
       shippingDate: product.shippingDate || '',
+      weight: product.weight || '',
     })
     setModalOpen(true)
   }
@@ -284,7 +288,10 @@ export default function Products() {
                 </tr>
               ) : (
                 filtered.map((p) => {
-                  const { profit, pct } = calcProfit(p.sellPrice, p.costPrice)
+                  const shippingCost = (p.weight || 0) * SHIPPING_RATE
+                  const trueCost = (p.costPrice || 0) + shippingCost
+                  const profit = (p.sellPrice || 0) - trueCost
+                  const pct = trueCost > 0 ? (profit / trueCost) * 100 : 0
                   const stock = totalStock(p.stock)
                   return (
                     <tr key={p.id} className="hover:bg-gray-50 transition-colors">
@@ -334,6 +341,9 @@ export default function Products() {
                           {formatCurrency(profit, currency)}
                         </span>
                         <span className="text-xs text-gray-400 ml-1">({pct.toFixed(0)}%)</span>
+                        {shippingCost > 0 && (
+                          <div className="text-xs text-gray-400">+{formatCurrency(shippingCost, currency)} ship</div>
+                        )}
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stock === 0 ? 'bg-red-100 text-red-600' : stock < 5 ? 'bg-amber-100 text-amber-600' : 'bg-green-100 text-green-600'}`}>
@@ -420,12 +430,52 @@ export default function Products() {
               />
             </div>
 
-            {form.sellPrice && form.costPrice && (
-              <div className="col-span-2 bg-green-50 rounded-xl px-4 py-3 text-sm">
-                <span className="text-green-700 font-semibold">
-                  Profit: {formatCurrency(parseFloat(form.sellPrice) - parseFloat(form.costPrice), currency)}
-                  {' '}({((parseFloat(form.sellPrice) - parseFloat(form.costPrice)) / parseFloat(form.costPrice) * 100).toFixed(0)}%)
-                </span>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Weight per Unit (kg)</label>
+              <input
+                type="number"
+                value={form.weight}
+                onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-black"
+                placeholder="e.g. 0.5"
+                step="0.01"
+                min={0}
+              />
+            </div>
+
+            {(form.sellPrice || form.costPrice || form.weight) && (
+              <div className="col-span-2 bg-gray-50 rounded-xl px-4 py-3 text-sm space-y-1.5">
+                {(() => {
+                  const sell = parseFloat(form.sellPrice) || 0
+                  const cost = parseFloat(form.costPrice) || 0
+                  const weight = parseFloat(form.weight) || 0
+                  const shipping = weight * SHIPPING_RATE
+                  const trueCost = cost + shipping
+                  const profit = sell - trueCost
+                  const pct = trueCost > 0 ? (profit / trueCost) * 100 : 0
+                  return (
+                    <>
+                      {weight > 0 && (
+                        <div className="flex justify-between text-gray-500">
+                          <span>Shipping cost ({weight} kg × {SHIPPING_RATE} MAD)</span>
+                          <span className="font-medium text-gray-700">{formatCurrency(shipping, currency)}</span>
+                        </div>
+                      )}
+                      {weight > 0 && cost > 0 && (
+                        <div className="flex justify-between text-gray-600 border-t border-gray-200 pt-1.5">
+                          <span>True cost (purchase + shipping)</span>
+                          <span className="font-semibold">{formatCurrency(trueCost, currency)}</span>
+                        </div>
+                      )}
+                      {sell > 0 && trueCost > 0 && (
+                        <div className={`flex justify-between font-semibold ${profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                          <span>Profit after shipping</span>
+                          <span>{formatCurrency(profit, currency)} ({pct.toFixed(0)}%)</span>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             )}
 
