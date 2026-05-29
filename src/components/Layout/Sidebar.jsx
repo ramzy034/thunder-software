@@ -10,12 +10,14 @@ import {
   Wallet,
   Settings,
   Barcode,
+  ShoppingBag,
 } from 'lucide-react'
 import clsx from 'clsx'
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'pos', label: 'POS Terminal', icon: ShoppingCart },
+  { key: 'sales', label: 'Sales', icon: ShoppingBag },
   { key: 'products', label: 'Products', icon: Package },
   { key: 'wholesale', label: 'Wholesale', icon: Truck },
   { key: 'labels', label: 'Labels & Barcodes', icon: Barcode },

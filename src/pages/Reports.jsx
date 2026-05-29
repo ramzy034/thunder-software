@@ -23,6 +23,11 @@ export default function Reports() {
   const settings = useStore((s) => s.settings)
   const currency = settings.currency
 
+  const confirmedSales = useMemo(
+    () => sales.filter((s) => s.status === 'confirmed' || (!s.status && !s.voided)),
+    [sales]
+  )
+
   const [period, setPeriod] = useState('30d')
 
   const { start, end } = useMemo(() => {
@@ -37,7 +42,7 @@ export default function Reports() {
   }, [period])
 
   const filteredSales = useMemo(
-    () => sales.filter((s) => !s.voided && new Date(s.createdAt) >= start && new Date(s.createdAt) <= end),
+    () => confirmedSales.filter((s) => new Date(s.createdAt) >= start && new Date(s.createdAt) <= end),
     [sales, start, end]
   )
 

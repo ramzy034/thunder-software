@@ -368,7 +368,16 @@ const useStore = create((set, get) => ({
       })
     })
 
-    const sale = { ...saleData, id, receiptNumber, createdAt: new Date().toISOString() }
+    const sale = {
+      ...saleData,
+      id,
+      receiptNumber,
+      createdAt: new Date().toISOString(),
+      source: 'pos',
+      status: 'pending',
+      customerName: saleData.customerName || '',
+      customerContact: saleData.customerContact || '',
+    }
 
     set({ products, sales: [sale, ...s.sales], receiptCounter: s.receiptCounter + 1 })
 
@@ -386,10 +395,19 @@ const useStore = create((set, get) => ({
     return sale
   },
 
-  voidSale: (id) => {
+  confirmSale: (id) => {
     const s = get()
     const sale = s.sales.find((x) => x.id === id)
-    if (!sale || sale.voided) return
+    if (!sale || sale.status === 'confirmed') return
+    const updated = { ...sale, status: 'confirmed', confirmedAt: new Date().toISOString() }
+    set({ sales: s.sales.map((x) => (x.id === id ? updated : x)) })
+    syncDB(() => supabase.from('sales').update({ data: updated }).eq('id', id))
+  },
+
+  rejectSale: (id) => {
+    const s = get()
+    const sale = s.sales.find((x) => x.id === id)
+    if (!sale || sale.status === 'rejected' || sale.voided) return
 
     let products = s.products
     sale.items.forEach((item) => {
@@ -397,28 +415,89 @@ const useStore = create((set, get) => ({
         if (p.id !== item.productId) return p
         return {
           ...p,
-          stock: {
-            ...p.stock,
-            [item.size]: (p.stock[item.size] || 0) + item.quantity,
-          },
+          stock: { ...p.stock, [item.size]: (p.stock[item.size] || 0) + item.quantity },
         }
       })
     })
 
-    const voided = { ...sale, voided: true, voidedAt: new Date().toISOString() }
-
-    set({
-      products,
-      sales: s.sales.map((x) => (x.id === id ? voided : x)),
-    })
-
-    syncDB(() => supabase.from('sales').update({ data: voided }).eq('id', id))
+    const rejected = { ...sale, status: 'rejected', voided: true, voidedAt: new Date().toISOString() }
+    set({ products, sales: s.sales.map((x) => (x.id === id ? rejected : x)) })
+    syncDB(() => supabase.from('sales').update({ data: rejected }).eq('id', id))
     const affected = products.filter((p) => sale.items.some((i) => i.productId === p.id))
     if (affected.length) {
       syncDB(() =>
         Promise.all(affected.map((p) => supabase.from('products').update({ data: p }).eq('id', p.id)))
       )
     }
+  },
+
+  // Legacy — now calls rejectSale
+  voidSale: (id) => get().rejectSale(id),
+
+  addManualSale: (saleData) => {
+    const s = get()
+    const receiptNumber = generateReceiptNumber(s.receiptCounter)
+    const id = uuidv4()
+
+    let products = s.products
+    saleData.items.forEach((item) => {
+      products = products.map((p) => {
+        if (p.id !== item.productId) return p
+        return {
+          ...p,
+          stock: {
+            ...p.stock,
+            [item.size]: Math.max(0, (p.stock[item.size] || 0) - item.quantity),
+          },
+        }
+      })
+    })
+
+    const createdAt = saleData.date
+      ? new Date(saleData.date + 'T12:00:00').toISOString()
+      : new Date().toISOString()
+
+    const sale = {
+      id,
+      receiptNumber,
+      createdAt,
+      source: 'manual',
+      status: 'pending',
+      items: saleData.items,
+      subtotal: saleData.subtotal,
+      discount: saleData.discount || 0,
+      taxAmount: 0,
+      total: saleData.total,
+      paymentMethod: saleData.paymentMethod || 'cash',
+      amountPaid: saleData.total,
+      change: 0,
+      customerName: saleData.customerName || '',
+      customerContact: saleData.customerContact || '',
+      notes: saleData.notes || '',
+    }
+
+    set({ products, sales: [sale, ...s.sales], receiptCounter: s.receiptCounter + 1 })
+    syncDB(() =>
+      supabase.from('sales').insert({ id: sale.id, data: sale, created_at: sale.createdAt })
+    )
+    const affected = products.filter((p) => saleData.items.some((i) => i.productId === p.id))
+    if (affected.length) {
+      syncDB(() =>
+        Promise.all(affected.map((p) => supabase.from('products').update({ data: p }).eq('id', p.id)))
+      )
+    }
+    get()._saveAppState()
+    return sale
+  },
+
+  syncProductToWebsite: (id) => {
+    set((s) => ({
+      products: s.products.map((p) =>
+        p.id === id ? { ...p, websiteSynced: true, websiteSyncedAt: new Date().toISOString() } : p
+      ),
+    }))
+    const product = get().products.find((p) => p.id === id)
+    if (product) syncDB(() => supabase.from('products').update({ data: product }).eq('id', id))
   },
 
   // ─── Expenses ─────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Search, Edit2, Trash2, Package, RefreshCw, Upload, X } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, Package, RefreshCw, Upload, X, Globe, Check } from 'lucide-react'
 import JsBarcode from 'jsbarcode'
 import useStore from '../store/useStore'
 import Modal from '../components/UI/Modal'
@@ -98,11 +98,22 @@ export default function Products() {
   const addProduct = useStore((s) => s.addProduct)
   const updateProduct = useStore((s) => s.updateProduct)
   const deleteProduct = useStore((s) => s.deleteProduct)
+  const syncProductToWebsite = useStore((s) => s.syncProductToWebsite)
+  const wholesaleOrders = useStore((s) => s.wholesaleOrders)
   const settings = useStore((s) => s.settings)
   const currency = settings.currency
 
+  const getDeliveryStatus = (productId) => {
+    const orders = wholesaleOrders.filter((o) => o.items?.some((i) => i.productId === productId))
+    if (!orders.length) return null
+    if (orders.some((o) => o.status === 'reached')) return 'reached'
+    if (orders.some((o) => o.status === 'shipped')) return 'shipped'
+    return 'waiting'
+  }
+
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState('All')
+  const [filterDelivery, setFilterDelivery] = useState('All')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [form, setForm] = useState(emptyForm)
@@ -163,7 +174,13 @@ export default function Products() {
   const filtered = products.filter((p) => {
     const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
     const matchCat = filterCat === 'All' || p.category === filterCat
-    return matchSearch && matchCat
+    if (!matchSearch || !matchCat) return false
+    if (filterDelivery === 'All') return true
+    const ds = getDeliveryStatus(p.id) || p.wholesaleStatus
+    if (filterDelivery === 'reached') return ds === 'reached'
+    if (filterDelivery === 'shipped') return ds === 'shipped'
+    if (filterDelivery === 'waiting') return ds === 'waiting' || ds === null || !ds
+    return true
   })
 
   return (
@@ -188,6 +205,16 @@ export default function Products() {
           >
             <option>All</option>
             {categories.map((c) => <option key={c}>{c}</option>)}
+          </select>
+          <select
+            value={filterDelivery}
+            onChange={(e) => setFilterDelivery(e.target.value)}
+            className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-black"
+          >
+            <option value="All">All statuses</option>
+            <option value="reached">Reached</option>
+            <option value="shipped">Sent</option>
+            <option value="waiting">Not sent yet</option>
           </select>
         </div>
         <button
@@ -267,6 +294,19 @@ export default function Products() {
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center justify-end gap-2">
+                          {p.websiteSynced ? (
+                            <span className="flex items-center gap-1 text-xs text-green-600 font-medium px-2 py-1 bg-green-50 rounded-lg">
+                              <Check size={11} /> On Website
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => syncProductToWebsite(p.id)}
+                              title="Add to website (will sync when API is connected)"
+                              className="flex items-center gap-1 text-xs text-gray-500 font-medium px-2 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              <Globe size={11} /> Add to Website
+                            </button>
+                          )}
                           <button onClick={() => openStockModal(p)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors" title="Adjust stock">
                             <RefreshCw size={14} />
                           </button>

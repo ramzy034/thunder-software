@@ -14,6 +14,7 @@ import Expenses from './pages/Expenses'
 import Reports from './pages/Reports'
 import CashManagement from './pages/CashManagement'
 import Settings from './pages/Settings'
+import Sales from './pages/Sales'
 
 const PAGES = {
   dashboard: Dashboard,
@@ -26,6 +27,7 @@ const PAGES = {
   reports: Reports,
   cash: CashManagement,
   settings: Settings,
+  sales: Sales,
 }
 
 function LoadingScreen() {

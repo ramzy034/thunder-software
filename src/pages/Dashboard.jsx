@@ -13,7 +13,10 @@ export default function Dashboard() {
   const settings = useStore((s) => s.settings)
   const currency = settings.currency
 
-  const activeSales = useMemo(() => sales.filter((s) => !s.voided), [sales])
+  const activeSales = useMemo(
+    () => sales.filter((s) => s.status === 'confirmed' || (!s.status && !s.voided)),
+    [sales]
+  )
 
   // Today's stats
   const todayStart = startOfDay(new Date())
