@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { User, WifiOff, Menu, Download } from 'lucide-react'
+import { User, WifiOff, Menu, Download, RefreshCw } from 'lucide-react'
 import useStore from '../../store/useStore'
 import { isConfigured } from '../../lib/supabase'
 
@@ -25,8 +25,16 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
 export default function Header({ page, syncError, onMenuClick }) {
   const settings = useStore((s) => s.settings)
+  const refresh = useStore((s) => s.refresh)
   const [installPrompt, setInstallPrompt] = useState(null)
   const [installed, setInstalled] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+
+  const handleRefresh = async () => {
+    setSyncing(true)
+    await refresh()
+    setTimeout(() => setSyncing(false), 600)
+  }
 
   useEffect(() => {
     // Pick up any prompt that fired before this component mounted
@@ -87,18 +95,27 @@ export default function Header({ page, syncError, onMenuClick }) {
         )}
 
         {isConfigured && (
-          <div
-            className={`hidden sm:flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
-              syncError ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
-            }`}
-            title={syncError || 'Syncing with cloud'}
-          >
-            {syncError ? (
-              <><WifiOff size={11} /> Sync error</>
-            ) : (
-              <><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" /> Live sync</>
-            )}
-          </div>
+          <>
+            <button
+              onClick={handleRefresh}
+              title="Sync now — pull latest data from cloud"
+              className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors text-gray-500"
+            >
+              <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+            </button>
+            <div
+              className={`hidden sm:flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
+                syncError ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
+              }`}
+              title={syncError || 'Syncing with cloud'}
+            >
+              {syncError ? (
+                <><WifiOff size={11} /> Sync error</>
+              ) : (
+                <><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" /> Live sync</>
+              )}
+            </div>
+          </>
         )}
         <div className="w-8 h-8 lg:w-9 lg:h-9 rounded-full bg-black flex items-center justify-center flex-shrink-0">
           <User size={16} className="text-white" />

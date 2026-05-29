@@ -81,35 +81,70 @@ const useStore = create((set, get) => ({
     }
 
     try {
-      const [pRes, sRes, eRes, wRes, cRes, stRes] = await Promise.all([
-        supabase.from('products').select('id, data').order('created_at', { ascending: false }),
-        supabase.from('sales').select('id, data').order('created_at', { ascending: false }),
-        supabase.from('expenses').select('id, data').order('created_at', { ascending: false }),
-        supabase.from('wholesale_orders').select('id, data').order('created_at', { ascending: false }),
-        supabase.from('cash_sessions').select('id, data').order('created_at', { ascending: false }),
-        supabase.from('app_state').select('state').eq('id', 1).maybeSingle(),
-      ])
-
-      const st = stRes.data?.state || {}
-
-      set({
-        products: (pRes.data || []).map((r) => r.data),
-        sales: (sRes.data || []).map((r) => r.data),
-        expenses: (eRes.data || []).map((r) => r.data),
-        wholesaleOrders: (wRes.data || []).map((r) => r.data),
-        cashSessions: (cRes.data || []).map((r) => r.data),
-        currentCashSession: st.currentCashSession ?? null,
-        categories: st.categories || DEFAULT_CATEGORIES,
-        settings: { ...DEFAULT_SETTINGS, ...(st.settings || {}) },
-        receiptCounter: st.receiptCounter || 1,
-        loading: false,
-        syncError: null,
-      })
-
+      await get()._fetchAll()
       get()._subscribe()
+      get()._startPolling()
     } catch (err) {
       console.error('[POS Init]', err)
       set({ loading: false, syncError: err.message })
+    }
+  },
+
+  // Fetch all data from Supabase and update state
+  _fetchAll: async () => {
+    const [pRes, sRes, eRes, wRes, cRes, stRes] = await Promise.all([
+      supabase.from('products').select('id, data').order('created_at', { ascending: false }),
+      supabase.from('sales').select('id, data').order('created_at', { ascending: false }),
+      supabase.from('expenses').select('id, data').order('created_at', { ascending: false }),
+      supabase.from('wholesale_orders').select('id, data').order('created_at', { ascending: false }),
+      supabase.from('cash_sessions').select('id, data').order('created_at', { ascending: false }),
+      supabase.from('app_state').select('state').eq('id', 1).maybeSingle(),
+    ])
+
+    const st = stRes.data?.state || {}
+
+    set({
+      products: (pRes.data || []).map((r) => r.data),
+      sales: (sRes.data || []).map((r) => r.data),
+      expenses: (eRes.data || []).map((r) => r.data),
+      wholesaleOrders: (wRes.data || []).map((r) => r.data),
+      cashSessions: (cRes.data || []).map((r) => r.data),
+      currentCashSession: st.currentCashSession ?? null,
+      categories: st.categories || DEFAULT_CATEGORIES,
+      settings: { ...DEFAULT_SETTINGS, ...(st.settings || {}) },
+      receiptCounter: st.receiptCounter || 1,
+      loading: false,
+      syncError: null,
+    })
+  },
+
+  // Manual refresh — pull latest from Supabase right now
+  refresh: async () => {
+    if (!isConfigured || !supabase) return
+    try {
+      await get()._fetchAll()
+    } catch (err) {
+      console.error('[POS Refresh]', err)
+    }
+  },
+
+  // Poll every 30s + refresh on page visibility as real-time fallback
+  _startPolling: () => {
+    // Periodic poll every 30 seconds
+    const interval = setInterval(() => {
+      if (!document.hidden) get().refresh()
+    }, 30000)
+
+    // Instant refresh when switching back to the tab/app
+    const onVisible = () => {
+      if (!document.hidden) get().refresh()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    // Store cleanup handles so they can be removed if needed
+    window._posCleanup = () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   },
 
