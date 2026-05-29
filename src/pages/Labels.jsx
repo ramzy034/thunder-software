@@ -25,7 +25,7 @@ export default function Labels() {
   const handlePrint = () => printElement(printRef, `Labels — ${selectedProduct?.name || ''}`)
 
   const filtered = products.filter((p) =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
+    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku?.toLowerCase().includes(search.toLowerCase())
   )
 
   const selectProduct = (p) => {

@@ -1,4 +1,5 @@
-import { User, WifiOff, Menu } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { User, WifiOff, Menu, Download } from 'lucide-react'
 import useStore from '../../store/useStore'
 import { isConfigured } from '../../lib/supabase'
 
@@ -18,6 +19,34 @@ const PAGE_TITLES = {
 
 export default function Header({ page, syncError, onMenuClick }) {
   const settings = useStore((s) => s.settings)
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [installed, setInstalled] = useState(false)
+
+  useEffect(() => {
+    // Capture the browser install prompt event
+    const handler = (e) => {
+      e.preventDefault()
+      setInstallPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+
+    // Detect if already installed (standalone mode)
+    if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
+      setInstalled(true)
+    }
+
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstall = async () => {
+    if (!installPrompt) return
+    installPrompt.prompt()
+    const { outcome } = await installPrompt.userChoice
+    if (outcome === 'accepted') {
+      setInstallPrompt(null)
+      setInstalled(true)
+    }
+  }
 
   return (
     <header className="bg-white border-b border-gray-200 px-4 lg:px-8 py-3 lg:py-4 flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
@@ -36,6 +65,17 @@ export default function Header({ page, syncError, onMenuClick }) {
       </div>
 
       <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0">
+        {/* Install as desktop app button */}
+        {installPrompt && !installed && (
+          <button
+            onClick={handleInstall}
+            title="Install Thunder POS as a desktop app"
+            className="hidden sm:flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors"
+          >
+            <Download size={12} /> Install App
+          </button>
+        )}
+
         {isConfigured && (
           <div
             className={`hidden sm:flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
