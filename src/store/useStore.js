@@ -583,6 +583,34 @@ const useStore = create((set, get) => ({
   // Legacy — now calls rejectSale
   voidSale: (id) => get().rejectSale(id),
 
+  // Permanently delete a sale — restores stock if not already voided
+  deleteSale: (id) => {
+    const s = get()
+    const sale = s.sales.find((x) => x.id === id)
+    if (!sale) return
+
+    let products = s.products
+    if (!sale.voided && sale.status !== 'rejected') {
+      sale.items.forEach((item) => {
+        products = products.map((p) => {
+          if (p.id !== item.productId) return p
+          return { ...p, stock: { ...p.stock, [item.size]: (p.stock[item.size] || 0) + item.quantity } }
+        })
+      })
+    }
+
+    set({ products, sales: s.sales.filter((x) => x.id !== id) })
+    syncDB(() => supabase.from('sales').delete().eq('id', id))
+
+    if (!sale.voided) {
+      const affected = products.filter((p) => sale.items.some((i) => i.productId === p.id))
+      if (affected.length) {
+        syncDB(() => Promise.all(affected.map((p) => supabase.from('products').update({ data: p }).eq('id', p.id))))
+      }
+    }
+    get().addToast('Sale deleted')
+  },
+
   addManualSale: (saleData) => {
     const s = get()
     const receiptNumber = generateReceiptNumber(s.receiptCounter)

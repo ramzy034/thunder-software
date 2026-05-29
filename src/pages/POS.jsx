@@ -142,13 +142,8 @@ export default function POS() {
     const trimmed = code.trim()
     const product = products.find((p) => p.barcode === trimmed)
     if (product) {
-      const sizesWithStock = Object.entries(product.stock || {}).filter(([, q]) => q > 0)
-      if (sizesWithStock.length === 0) {
-        addToast(`${product.name} is out of stock`, 'error')
-        return
-      }
-      if (sizesWithStock.length === 1) addToCart(product, sizesWithStock[0][0])
-      else setSizeModal({ product })
+      // Always show size modal — lets user see stock per size + total before adding
+      setSizeModal({ product })
     } else {
       addToast(`No product found for barcode: ${trimmed}`, 'error')
     }
@@ -542,33 +537,69 @@ export default function POS() {
       </div>
 
       {/* ── Size Selection Modal ── */}
-      <Modal open={!!sizeModal} onClose={() => setSizeModal(null)} title="Select Size">
-        {sizeModal && (
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              {sizeModal.product.image && (
-                <img src={sizeModal.product.image} className="w-14 h-14 rounded-xl object-cover" alt={sizeModal.product.name} />
+      <Modal open={!!sizeModal} onClose={() => setSizeModal(null)} title="Stock & Size">
+        {sizeModal && (() => {
+          const p = sizeModal.product
+          const stockEntries = Object.entries(p.stock || {})
+          const total = stockEntries.reduce((a, [, q]) => a + q, 0)
+          const cartQty = cart
+            .filter((i) => i.productId === p.id)
+            .reduce((a, i) => a + i.quantity, 0)
+          return (
+            <div>
+              {/* Product info */}
+              <div className="flex items-center gap-3 mb-4">
+                {p.image && <img src={p.image} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" alt={p.name} />}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{p.name}</p>
+                  <p className="text-sm text-gray-500">{formatCurrency(p.sellPrice, currency)}</p>
+                </div>
+                {/* Total stock badge */}
+                <div className="text-center flex-shrink-0">
+                  <div className={`text-2xl font-bold ${total === 0 ? 'text-red-500' : total < 5 ? 'text-amber-500' : 'text-green-600'}`}>
+                    {total}
+                  </div>
+                  <div className="text-xs text-gray-400">total</div>
+                </div>
+              </div>
+
+              {/* Already in cart indicator */}
+              {cartQty > 0 && (
+                <div className="mb-3 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl">
+                  {cartQty} already in cart
+                </div>
               )}
-              <div>
-                <p className="font-semibold text-gray-900">{sizeModal.product.name}</p>
-                <p className="text-sm text-gray-500">{formatCurrency(sizeModal.product.sellPrice, currency)}</p>
+
+              {/* Out of stock message */}
+              {total === 0 && (
+                <div className="mb-3 text-sm text-red-500 bg-red-50 px-3 py-2 rounded-xl font-medium">
+                  All sizes are out of stock
+                </div>
+              )}
+
+              {/* Size grid */}
+              <div className="grid grid-cols-3 gap-2.5">
+                {stockEntries.map(([sz, qty]) => (
+                  <button
+                    key={sz}
+                    onClick={() => qty > 0 && addToCart(p, sz)}
+                    disabled={qty === 0}
+                    className={`py-3 px-2 rounded-xl font-semibold transition-all text-center ${
+                      qty === 0
+                        ? 'bg-gray-50 text-gray-300 cursor-not-allowed border border-gray-100'
+                        : 'bg-black text-white hover:bg-gray-800 active:scale-95'
+                    }`}
+                  >
+                    <span className="block text-sm">{sz}</span>
+                    <span className={`block text-xs font-normal mt-0.5 ${qty === 0 ? 'text-gray-300' : 'text-white/70'}`}>
+                      {qty === 0 ? 'out' : `${qty} left`}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              {Object.entries(sizeModal.product.stock || {}).map(([sz, qty]) => (
-                <button
-                  key={sz}
-                  onClick={() => addToCart(sizeModal.product, sz)}
-                  disabled={qty === 0}
-                  className={`py-3 rounded-xl font-semibold transition-colors ${qty === 0 ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-black text-white hover:bg-gray-800'}`}
-                >
-                  {sz}
-                  <span className="block text-xs font-normal mt-0.5 opacity-70">{qty} left</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+          )
+        })()}
       </Modal>
 
       {/* ── Product Picker Modal ── */}
