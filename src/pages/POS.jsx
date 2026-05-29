@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   Search, Plus, Minus, Trash2, Printer, CheckCircle, XCircle,
-  ScanLine, LayoutGrid, Eye, Package, Camera,
+  ScanLine, LayoutGrid, Eye, Package, Camera, Wifi,
 } from 'lucide-react'
 import useStore from '../store/useStore'
 import Modal from '../components/UI/Modal'
@@ -9,6 +9,7 @@ import ReceiptTemplate from '../components/Print/ReceiptTemplate'
 import CameraScanner from '../components/Scanner/CameraScanner'
 import { formatCurrency, totalStock } from '../utils/format'
 import { printElement } from '../utils/printUtils'
+import { supabase, isConfigured } from '../lib/supabase'
 
 const PAYMENT_METHODS = ['cash', 'card', 'bank transfer', 'mixed']
 
@@ -33,19 +34,54 @@ export default function POS() {
   const [amountPaid, setAmountPaid] = useState('')
 
   // ── Modal state ───────────────────────────────────────────────
-  const [sizeModal, setSizeModal] = useState(null)         // { product }
+  const [sizeModal, setSizeModal] = useState(null)
   const [showCameraScanner, setShowCameraScanner] = useState(false)
   const [showProductPicker, setShowProductPicker] = useState(false)
   const [pickerSearch, setPickerSearch] = useState('')
   const [pickerCategory, setPickerCategory] = useState('All')
-  const [previewModal, setPreviewModal] = useState(false)  // before confirming sale
+  const [previewModal, setPreviewModal] = useState(false)
   const [lastSale, setLastSale] = useState(null)
-  const [receiptModal, setReceiptModal] = useState(false)  // after sale is saved
+  const [receiptModal, setReceiptModal] = useState(false)
   const [autoPrint, setAutoPrint] = useState(false)
 
   const barcodeRef = useRef(null)
   const previewReceiptRef = useRef(null)
   const receiptRef = useRef(null)
+
+  // ── Shared cart sync across devices ──────────────────────────
+  // Uses Supabase Broadcast — instant real-time, no DB writes per scan.
+  // All open POS terminals share the same live cart.
+  const channelRef = useRef(null)
+  const receivingRef = useRef(false)  // prevents re-broadcasting a remote update
+
+  useEffect(() => {
+    if (!isConfigured || !supabase) return
+
+    const channel = supabase
+      .channel('pos-shared-cart', { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'cart' }, ({ payload }) => {
+        receivingRef.current = true
+        setCart(payload.cart || [])
+        setDiscount(payload.discount ?? 0)
+        setDiscountType(payload.discountType || 'fixed')
+        setPaymentMethod(payload.paymentMethod || 'cash')
+      })
+      .subscribe()
+
+    channelRef.current = channel
+    return () => { supabase.removeChannel(channel) }
+  }, [])
+
+  // Broadcast cart to all other open POS terminals on any change
+  useEffect(() => {
+    if (receivingRef.current) { receivingRef.current = false; return }
+    if (!channelRef.current) return
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'cart',
+      payload: { cart, discount, discountType, paymentMethod },
+    })
+  }, [cart, discount, discountType, paymentMethod])
 
   // Always keep barcode input focused so hardware scanners work at any time
   useEffect(() => { barcodeRef.current?.focus() }, [])
@@ -315,6 +351,7 @@ export default function POS() {
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <h3 className="font-bold text-gray-900">
               Cart{cart.length > 0 && <span className="ml-2 bg-black text-white text-xs px-2 py-0.5 rounded-full">{cart.reduce((a, i) => a + i.quantity, 0)}</span>}
+                {isConfigured && <span className="ml-2 flex items-center gap-1 text-xs text-green-600 font-normal" title="Cart is shared across all open POS terminals"><Wifi size={11} />Shared</span>}
             </h3>
             {cart.length > 0 && (
               <button
