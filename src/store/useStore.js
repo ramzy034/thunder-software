@@ -103,6 +103,7 @@ const useStore = create((set, get) => ({
       await get()._fetchAll()
       get()._subscribe()
       get()._startPolling()
+      get()._requestNotifications()
     } catch (err) {
       console.error('[POS Init]', err)
       set({ loading: false, syncError: err.message })
@@ -148,11 +149,58 @@ const useStore = create((set, get) => ({
   },
 
   // Poll every 30s + refresh on page visibility as real-time fallback
+  _requestNotifications: () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  },
+
+  _notify: (title, body) => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return
+    try {
+      new Notification(title, {
+        body,
+        icon: '/icon-192x192.png',
+        badge: '/icon-192x192.png',
+        tag: title,
+      })
+    } catch {}
+  },
+
   _startPolling: () => {
     // Periodic poll every 30 seconds
     const interval = setInterval(() => {
       if (!document.hidden) get().refresh()
     }, 30000)
+
+    // Auto-poll website orders every 2 minutes, silently
+    const orderInterval = setInterval(async () => {
+      const { websiteUrl, apiKey } = get().settings
+      if (!websiteUrl || !apiKey) return
+      const since = get().lastWebsiteOrderSync
+      const endpoint =
+        websiteUrl.replace(/\/$/, '') +
+        '/pos-orders.php' +
+        (since ? '?since=' + encodeURIComponent(since) : '')
+      try {
+        const res = await fetch(endpoint, { headers: { 'X-API-Key': apiKey } })
+        if (!res.ok) return
+        const data = await res.json()
+        const existing = get().sales
+        const existingNums = new Set(existing.map((s) => s.websiteOrderNum).filter(Boolean))
+        const newOrders = (data.orders || []).filter((o) => !existingNums.has(o.num_order))
+        if (newOrders.length === 0) {
+          set({ lastWebsiteOrderSync: new Date().toISOString() })
+          return
+        }
+        // Re-use fetchWebsiteOrders to add them properly
+        await get().fetchWebsiteOrders()
+        get()._notify(
+          `${newOrders.length} new website order${newOrders.length !== 1 ? 's' : ''}`,
+          newOrders.map((o) => o.num_order).join(', ')
+        )
+      } catch {}
+    }, 2 * 60 * 1000)
 
     // Instant refresh when switching back to the tab/app
     const onVisible = () => {
@@ -163,6 +211,7 @@ const useStore = create((set, get) => ({
     // Store cleanup handles so they can be removed if needed
     window._posCleanup = () => {
       clearInterval(interval)
+      clearInterval(orderInterval)
       document.removeEventListener('visibilitychange', onVisible)
     }
   },
@@ -538,6 +587,7 @@ const useStore = create((set, get) => ({
       )
     }
     get()._saveAppState()
+    get()._notify('New Sale — ' + receiptNumber, saleData.items.map((i) => `${i.quantity}x ${i.productName || i.name}`).join(', '))
 
     return sale
   },
@@ -790,6 +840,10 @@ const useStore = create((set, get) => ({
       })
 
       get().addToast(`${newSales.length} website order${newSales.length !== 1 ? 's' : ''} synced`)
+      get()._notify(
+        `${newSales.length} new website order${newSales.length !== 1 ? 's' : ''}`,
+        newSales.map((s) => s.websiteOrderNum).join(', ')
+      )
     } catch {
       get().addToast('Could not reach website — check URL in Settings', 'error')
     }
