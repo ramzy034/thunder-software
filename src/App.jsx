@@ -3,6 +3,7 @@ import { isConfigured } from './lib/supabase'
 import useStore from './store/useStore'
 import Sidebar from './components/Layout/Sidebar'
 import Header from './components/Layout/Header'
+import Toast from './components/UI/Toast'
 import SetupScreen from './components/Setup/SetupScreen'
 import Dashboard from './pages/Dashboard'
 import POS from './pages/POS'
@@ -75,6 +76,7 @@ export default function App() {
           <PageComponent />
         </main>
       </div>
+      <Toast />
     </div>
   )
 }

@@ -1,7 +1,6 @@
 /**
- * Opens the system print dialog for a React ref element.
+ * Prints a React ref element using a hidden iframe — no popup blocker issues.
  * Works with any element that uses inline styles (ReceiptTemplate, LabelTemplate).
- * The new window approach is the most reliable cross-browser print method.
  */
 export function printElement(ref, title = 'Print') {
   if (!ref?.current) {
@@ -11,13 +10,26 @@ export function printElement(ref, title = 'Print') {
 
   const content = ref.current.outerHTML
 
-  const win = window.open('', '_blank', 'width=700,height=900,toolbar=0,menubar=0,scrollbars=1,status=0')
-  if (!win) {
-    alert('Printing requires pop-ups to be allowed. Please allow pop-ups for this site in your browser settings and try again.')
+  const iframe = document.createElement('iframe')
+  Object.assign(iframe.style, {
+    position: 'fixed',
+    right: '0',
+    bottom: '0',
+    width: '1px',
+    height: '1px',
+    border: '0',
+    visibility: 'hidden',
+  })
+  document.body.appendChild(iframe)
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document
+  if (!doc) {
+    document.body.removeChild(iframe)
     return
   }
 
-  win.document.write(`<!DOCTYPE html>
+  doc.open()
+  doc.write(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -30,12 +42,18 @@ export function printElement(ref, title = 'Print') {
 </head>
 <body>${content}</body>
 </html>`)
-
-  win.document.close()
+  doc.close()
 
   // Give the browser time to render SVGs (barcodes) before printing
   setTimeout(() => {
-    win.focus()
-    win.print()
+    try {
+      iframe.contentWindow.focus()
+      iframe.contentWindow.print()
+    } finally {
+      // Remove iframe after print dialog closes
+      setTimeout(() => {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
+      }, 1000)
+    }
   }, 400)
 }

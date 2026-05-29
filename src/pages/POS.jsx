@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   Search, Plus, Minus, Trash2, Printer, CheckCircle, XCircle,
-  ScanLine, LayoutGrid, Eye, Package, ChevronDown, Camera,
+  ScanLine, LayoutGrid, Eye, Package, Camera,
 } from 'lucide-react'
 import useStore from '../store/useStore'
 import Modal from '../components/UI/Modal'
@@ -17,6 +17,7 @@ export default function POS() {
   const categories = useStore((s) => s.categories)
   const settings = useStore((s) => s.settings)
   const createSale = useStore((s) => s.createSale)
+  const addToast = useStore((s) => s.addToast)
   const currency = settings.currency
 
   // ── Cart state ────────────────────────────────────────────────
@@ -39,8 +40,10 @@ export default function POS() {
   const [previewModal, setPreviewModal] = useState(false)  // before confirming sale
   const [lastSale, setLastSale] = useState(null)
   const [receiptModal, setReceiptModal] = useState(false)  // after sale is saved
+  const [autoPrint, setAutoPrint] = useState(false)
 
   const barcodeRef = useRef(null)
+  const previewReceiptRef = useRef(null)
   const receiptRef = useRef(null)
 
   // Always keep barcode input focused so hardware scanners work at any time
@@ -60,6 +63,17 @@ export default function POS() {
   }, [sizeModal, showCameraScanner, showProductPicker, previewModal, receiptModal])
 
   const handlePrint = () => printElement(receiptRef, `Receipt ${lastSale?.receiptNumber || ''}`)
+
+  // Auto-print when receipt modal opens and autoPrint flag is set
+  useEffect(() => {
+    if (autoPrint && receiptModal) {
+      const t = setTimeout(() => {
+        printElement(receiptRef, `Receipt ${lastSale?.receiptNumber || ''}`)
+        setAutoPrint(false)
+      }, 500)
+      return () => clearTimeout(t)
+    }
+  }, [autoPrint, receiptModal, lastSale])
 
   // ── Calculations ──────────────────────────────────────────────
   const subtotal = cart.reduce((a, i) => a + i.unitPrice * i.quantity, 0)
@@ -189,7 +203,12 @@ export default function POS() {
     setLastSale(sale)
     setCart([]); setDiscount(0); setAmountPaid('')
     setPreviewModal(false)
-    if (andPrint) setReceiptModal(true)
+    if (andPrint) {
+      setReceiptModal(true)
+      setAutoPrint(true)
+    } else {
+      addToast(`Sale ${sale.receiptNumber} saved`)
+    }
   }
 
   return (
@@ -592,7 +611,7 @@ export default function POS() {
           {/* Receipt */}
           <div className="flex-shrink-0">
             <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-              <ReceiptTemplate ref={receiptRef} sale={previewSaleData} settings={settings} />
+              <ReceiptTemplate ref={previewReceiptRef} sale={previewSaleData} settings={settings} />
             </div>
             <p className="text-xs text-gray-400 text-center mt-2">Receipt preview</p>
           </div>

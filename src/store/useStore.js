@@ -37,10 +37,13 @@ const DEFAULT_CATEGORIES = [
   'Accessories',
 ]
 
-// Fire-and-forget Supabase write with error logging
+// Fire-and-forget Supabase write — shows a toast on failure
 const syncDB = (fn) => {
   if (!isConfigured || !supabase) return
-  fn().catch((err) => console.error('[POS Sync]', err))
+  fn().catch((err) => {
+    console.error('[POS Sync]', err)
+    try { useStore.getState().addToast('Sync error — data may not have saved. Check your connection.', 'error') } catch {}
+  })
 }
 
 const useStore = create((set, get) => ({
@@ -58,6 +61,17 @@ const useStore = create((set, get) => ({
   // ─── Status ──────────────────────────────────────────
   loading: true,
   syncError: null,
+
+  // ─── Toasts ──────────────────────────────────────────
+  toasts: [],
+  addToast: (message, type = 'success') => {
+    const id = Date.now() + Math.random()
+    set((s) => ({ toasts: [...s.toasts, { id, message, type }] }))
+    setTimeout(() => {
+      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
+    }, 3500)
+  },
+  removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
   // ─── Initialization ──────────────────────────────────
   init: async () => {
@@ -266,6 +280,7 @@ const useStore = create((set, get) => ({
     syncDB(() =>
       supabase.from('products').insert({ id: newProduct.id, data: newProduct, created_at: newProduct.createdAt })
     )
+    get().addToast(`"${newProduct.name}" added`)
   },
 
   updateProduct: (id, updates) => {
@@ -274,11 +289,28 @@ const useStore = create((set, get) => ({
     }))
     const updated = get().products.find((p) => p.id === id)
     if (updated) syncDB(() => supabase.from('products').update({ data: updated }).eq('id', id))
+    get().addToast('Product saved')
   },
 
   deleteProduct: (id) => {
     set((s) => ({ products: s.products.filter((p) => p.id !== id) }))
     syncDB(() => supabase.from('products').delete().eq('id', id))
+    get().addToast('Product deleted')
+  },
+
+  bulkUpdateProducts: (ids, updates) => {
+    set((s) => ({
+      products: s.products.map((p) => (ids.includes(p.id) ? { ...p, ...updates } : p)),
+    }))
+    const affected = get().products.filter((p) => ids.includes(p.id))
+    affected.forEach((p) => syncDB(() => supabase.from('products').update({ data: p }).eq('id', p.id)))
+    get().addToast(`${ids.length} product${ids.length !== 1 ? 's' : ''} updated`)
+  },
+
+  bulkDeleteProducts: (ids) => {
+    set((s) => ({ products: s.products.filter((p) => !ids.includes(p.id)) }))
+    ids.forEach((id) => syncDB(() => supabase.from('products').delete().eq('id', id)))
+    get().addToast(`${ids.length} product${ids.length !== 1 ? 's' : ''} deleted`)
   },
 
   // ─── Categories ──────────────────────────────────────
@@ -301,6 +333,7 @@ const useStore = create((set, get) => ({
         .from('wholesale_orders')
         .insert({ id: newOrder.id, data: newOrder, created_at: newOrder.createdAt })
     )
+    get().addToast('Wholesale order added')
   },
 
   updateWholesaleOrderStatus: (id, status) => {
@@ -331,6 +364,9 @@ const useStore = create((set, get) => ({
       wholesaleOrders: s.wholesaleOrders.map((o) => (o.id === id ? updatedOrder : o)),
     })
 
+    const statusLabels = { waiting: 'Waiting', shipped: 'In Shipping', reached: 'Arrived' }
+    get().addToast(`Order marked as ${statusLabels[status] || status}`)
+
     syncDB(() => supabase.from('wholesale_orders').update({ data: updatedOrder }).eq('id', id))
 
     if (status === 'reached') {
@@ -346,6 +382,7 @@ const useStore = create((set, get) => ({
   deleteWholesaleOrder: (id) => {
     set((s) => ({ wholesaleOrders: s.wholesaleOrders.filter((o) => o.id !== id) }))
     syncDB(() => supabase.from('wholesale_orders').delete().eq('id', id))
+    get().addToast('Order deleted')
   },
 
   // ─── Sales ────────────────────────────────────────────
@@ -402,6 +439,7 @@ const useStore = create((set, get) => ({
     const updated = { ...sale, status: 'confirmed', confirmedAt: new Date().toISOString() }
     set({ sales: s.sales.map((x) => (x.id === id ? updated : x)) })
     syncDB(() => supabase.from('sales').update({ data: updated }).eq('id', id))
+    get().addToast(`Sale ${sale.receiptNumber} confirmed`)
   },
 
   rejectSale: (id) => {
@@ -429,6 +467,7 @@ const useStore = create((set, get) => ({
         Promise.all(affected.map((p) => supabase.from('products').update({ data: p }).eq('id', p.id)))
       )
     }
+    get().addToast(`Sale ${sale.receiptNumber} voided`)
   },
 
   // Legacy — now calls rejectSale
@@ -487,6 +526,7 @@ const useStore = create((set, get) => ({
       )
     }
     get()._saveAppState()
+    get().addToast(`Sale ${sale.receiptNumber} added`)
     return sale
   },
 
@@ -509,6 +549,7 @@ const useStore = create((set, get) => ({
         .from('expenses')
         .insert({ id: newExpense.id, data: newExpense, created_at: newExpense.createdAt })
     )
+    get().addToast('Expense added')
   },
 
   updateExpense: (id, updates) => {
@@ -517,11 +558,13 @@ const useStore = create((set, get) => ({
     }))
     const updated = get().expenses.find((e) => e.id === id)
     if (updated) syncDB(() => supabase.from('expenses').update({ data: updated }).eq('id', id))
+    get().addToast('Expense updated')
   },
 
   deleteExpense: (id) => {
     set((s) => ({ expenses: s.expenses.filter((e) => e.id !== id) }))
     syncDB(() => supabase.from('expenses').delete().eq('id', id))
+    get().addToast('Expense deleted')
   },
 
   // ─── Cash Sessions ────────────────────────────────────
@@ -535,6 +578,7 @@ const useStore = create((set, get) => ({
     }
     set({ currentCashSession: session })
     get()._saveAppState()
+    get().addToast('Cash session opened')
     return session
   },
 
@@ -555,6 +599,7 @@ const useStore = create((set, get) => ({
         .insert({ id: closed.id, data: closed, created_at: closed.openedAt })
     )
     get()._saveAppState()
+    get().addToast('Cash session closed')
     return closed
   },
 
@@ -577,6 +622,7 @@ const useStore = create((set, get) => ({
   updateSettings: (updates) => {
     set((s) => ({ settings: { ...s.settings, ...updates } }))
     get()._saveAppState()
+    get().addToast('Settings saved')
   },
 }))
 

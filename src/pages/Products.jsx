@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Search, Edit2, Trash2, Package, RefreshCw, Upload, X, Globe, Check } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, Package, RefreshCw, Upload, X, Globe, Check, Calendar, Truck, CheckSquare, Square, ChevronDown } from 'lucide-react'
 import JsBarcode from 'jsbarcode'
 import useStore from '../store/useStore'
 import Modal from '../components/UI/Modal'
@@ -104,6 +104,8 @@ export default function Products() {
   const addProduct = useStore((s) => s.addProduct)
   const updateProduct = useStore((s) => s.updateProduct)
   const deleteProduct = useStore((s) => s.deleteProduct)
+  const bulkUpdateProducts = useStore((s) => s.bulkUpdateProducts)
+  const bulkDeleteProducts = useStore((s) => s.bulkDeleteProducts)
   const syncProductToWebsite = useStore((s) => s.syncProductToWebsite)
   const wholesaleOrders = useStore((s) => s.wholesaleOrders)
   const settings = useStore((s) => s.settings)
@@ -128,6 +130,12 @@ export default function Products() {
   const [stockEdits, setStockEdits] = useState({})
   const [newSizeInput, setNewSizeInput] = useState('')
   const [customSizeInput, setCustomSizeInput] = useState('')
+
+  // ── Bulk selection ────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState([])
+  const [bulkStatusOpen, setBulkStatusOpen] = useState(false)
+  const [bulkDateModal, setBulkDateModal] = useState(false)
+  const [bulkDate, setBulkDate] = useState('')
 
   const openAdd = () => { setEditingProduct(null); setForm(emptyForm); setModalOpen(true) }
   const openEdit = (product) => {
@@ -206,6 +214,39 @@ export default function Products() {
     setNewSizeInput('')
   }
 
+  const toggleSelect = (id) =>
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filtered.length && filtered.length > 0) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(filtered.map((p) => p.id))
+    }
+  }
+
+  const clearSelection = () => setSelectedIds([])
+
+  const handleBulkStatus = (status) => {
+    bulkUpdateProducts(selectedIds, { wholesaleStatus: status || null })
+    setBulkStatusOpen(false)
+    clearSelection()
+  }
+
+  const handleBulkDate = () => {
+    if (!bulkDate) return
+    bulkUpdateProducts(selectedIds, { shippingDate: bulkDate })
+    setBulkDateModal(false)
+    setBulkDate('')
+    clearSelection()
+  }
+
+  const handleBulkDelete = () => {
+    if (!confirm(`Delete ${selectedIds.length} product${selectedIds.length !== 1 ? 's' : ''}? This cannot be undone.`)) return
+    bulkDeleteProducts(selectedIds)
+    clearSelection()
+  }
+
   const filtered = products.filter((p) => {
     const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
     const matchCat = filterCat === 'All' || p.category === filterCat
@@ -262,12 +303,75 @@ export default function Products() {
         </button>
       </div>
 
+      {/* Bulk Actions Toolbar */}
+      {selectedIds.length > 0 && (
+        <div className="bg-black text-white rounded-2xl px-4 py-3 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold">{selectedIds.length} selected</span>
+          <div className="flex-1" />
+
+          {/* Bulk Status */}
+          <div className="relative">
+            <button
+              onClick={() => setBulkStatusOpen((v) => !v)}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+            >
+              <Truck size={14} /> Set Status <ChevronDown size={13} />
+            </button>
+            {bulkStatusOpen && (
+              <div className="absolute left-0 top-full mt-1 bg-white text-gray-900 rounded-xl shadow-xl z-20 overflow-hidden w-44">
+                {[
+                  { value: '', label: 'Not Shipping' },
+                  { value: 'shipped', label: 'In Shipping' },
+                  { value: 'reached', label: 'Arrived' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleBulkStatus(opt.value)}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Bulk Shipping Date */}
+          <button
+            onClick={() => setBulkDateModal(true)}
+            className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+          >
+            <Calendar size={14} /> Set Ship Date
+          </button>
+
+          {/* Bulk Delete */}
+          <button
+            onClick={handleBulkDelete}
+            className="flex items-center gap-2 bg-red-500 hover:bg-red-600 px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+          >
+            <Trash2 size={14} /> Delete
+          </button>
+
+          <button onClick={clearSelection} className="text-white/60 hover:text-white text-sm transition-colors ml-1">
+            ✕ Cancel
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
+                <th className="pl-4 pr-2 py-3.5">
+                  <button onClick={toggleSelectAll} className="flex items-center justify-center text-gray-400 hover:text-gray-700 transition-colors">
+                    {selectedIds.length === filtered.length && filtered.length > 0
+                      ? <CheckSquare size={16} className="text-black" />
+                      : <Square size={16} />
+                    }
+                  </button>
+                </th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Ship Date</th>
@@ -281,7 +385,7 @@ export default function Products() {
             <tbody className="divide-y divide-gray-50">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center">
+                  <td colSpan={9} className="px-5 py-12 text-center">
                     <Package size={32} className="mx-auto text-gray-300 mb-2" />
                     <p className="text-gray-400">No products found</p>
                   </td>
@@ -293,8 +397,14 @@ export default function Products() {
                   const profit = (p.sellPrice || 0) - trueCost
                   const pct = trueCost > 0 ? (profit / trueCost) * 100 : 0
                   const stock = totalStock(p.stock)
+                  const isSelected = selectedIds.includes(p.id)
                   return (
-                    <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={p.id} className={`hover:bg-gray-50 transition-colors ${isSelected ? 'bg-blue-50' : ''}`}>
+                      <td className="pl-4 pr-2 py-3.5">
+                        <button onClick={() => toggleSelect(p.id)} className="flex items-center justify-center text-gray-400 hover:text-gray-700 transition-colors">
+                          {isSelected ? <CheckSquare size={16} className="text-black" /> : <Square size={16} />}
+                        </button>
+                      </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className="w-11 h-11 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
@@ -629,6 +739,27 @@ export default function Products() {
             <button onClick={handleSave} className="flex-1 bg-black text-white rounded-xl py-2.5 text-sm font-medium hover:bg-gray-800 transition-colors">
               {editingProduct ? 'Save Changes' : 'Add Product'}
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Shipping Date Modal */}
+      <Modal open={bulkDateModal} onClose={() => setBulkDateModal(false)} title={`Set Shipping Date — ${selectedIds.length} product${selectedIds.length !== 1 ? 's' : ''}`}>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">Choose a shipping date to apply to all selected products.</p>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Shipping Date</label>
+            <input
+              type="date"
+              value={bulkDate}
+              onChange={(e) => setBulkDate(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-black"
+              autoFocus
+            />
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button onClick={() => setBulkDateModal(false)} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-50">Cancel</button>
+            <button onClick={handleBulkDate} disabled={!bulkDate} className="flex-1 bg-black text-white rounded-xl py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-40">Apply to {selectedIds.length} Products</button>
           </div>
         </div>
       </Modal>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { X, Camera, AlertCircle, RefreshCw, FlipHorizontal2 } from 'lucide-react'
+import { X, Camera, AlertCircle, RefreshCw, FlipHorizontal2, ShieldCheck } from 'lucide-react'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 
 export default function CameraScanner({ onScan, onClose }) {
@@ -9,10 +9,11 @@ export default function CameraScanner({ onScan, onClose }) {
   const [error, setError] = useState(null)
   const [scanning, setScanning] = useState(false)
   const [frontCamera, setFrontCamera] = useState(false)
+  // 'checking' | 'ask' | 'denied' | 'ready'
+  const [permState, setPermState] = useState('checking')
 
   const start = useCallback(
     async (front = false) => {
-      // Clean up any previous reader
       readerRef.current?.reset()
       readerRef.current = null
       setError(null)
@@ -21,7 +22,6 @@ export default function CameraScanner({ onScan, onClose }) {
       const reader = new BrowserMultiFormatReader()
       readerRef.current = reader
 
-      // iOS Safari needs { ideal: ... } not exact string — exact fails on many devices
       const constraints = {
         video: {
           facingMode: { ideal: front ? 'user' : 'environment' },
@@ -29,32 +29,31 @@ export default function CameraScanner({ onScan, onClose }) {
       }
 
       try {
-        await reader.decodeFromConstraints(constraints, videoRef.current, (result, err) => {
+        await reader.decodeFromConstraints(constraints, videoRef.current, (result) => {
           if (result) {
             setScanning(true)
             const value = result.getText()
             const now = Date.now()
             const last = lastScanRef.current
-            // Debounce: ignore same code within 2 seconds
             if (value !== last.value || now - last.time >= 2000) {
               lastScanRef.current = { value, time: now }
               onScan(value)
             }
           }
-          // err here is just "nothing detected this frame" — not a real error
         })
         setScanning(true)
+        setPermState('ready')
       } catch (err) {
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          setError(
-            'Camera access denied.\n\nOn iPhone/iPad: go to Settings → Safari → Camera and set it to Allow. Then try again.'
-          )
+          setPermState('denied')
+          setError(null)
         } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
           setError('No camera found on this device.')
+          setPermState('ready')
         } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
           setError('Camera is in use by another app. Close other apps and try again.')
+          setPermState('ready')
         } else if (err.name === 'OverconstrainedError') {
-          // Exact facingMode failed — retry without constraint
           try {
             await reader.decodeFromConstraints({ video: true }, videoRef.current, (result) => {
               if (result) {
@@ -63,29 +62,59 @@ export default function CameraScanner({ onScan, onClose }) {
               }
             })
             setScanning(true)
+            setPermState('ready')
           } catch (e2) {
             setError(`Camera error: ${e2.message}`)
+            setPermState('ready')
           }
         } else {
           setError(`Camera error: ${err.message}`)
+          setPermState('ready')
         }
       }
     },
     [onScan]
   )
 
-  // Start on mount with back camera
+  // Check camera permission status on mount
   useEffect(() => {
-    start(false)
-    return () => {
-      readerRef.current?.reset()
+    const checkAndStart = async () => {
+      if (navigator.permissions) {
+        try {
+          const result = await navigator.permissions.query({ name: 'camera' })
+          if (result.state === 'granted') {
+            setPermState('ready')
+            start(false)
+          } else if (result.state === 'denied') {
+            setPermState('denied')
+          } else {
+            // 'prompt' — show the ask screen first
+            setPermState('ask')
+          }
+        } catch {
+          // Permissions API not supported (Firefox, some iOS) — try directly
+          setPermState('ready')
+          start(false)
+        }
+      } else {
+        // No permissions API — try directly
+        setPermState('ready')
+        start(false)
+      }
     }
+    checkAndStart()
+    return () => { readerRef.current?.reset() }
   }, [start])
 
   const switchCamera = () => {
     const next = !frontCamera
     setFrontCamera(next)
     start(next)
+  }
+
+  const handleAllowCamera = () => {
+    setPermState('ready')
+    start(frontCamera)
   }
 
   return (
@@ -96,7 +125,7 @@ export default function CameraScanner({ onScan, onClose }) {
           <div className="flex items-center gap-2 min-w-0">
             <Camera size={18} className="text-gray-700 flex-shrink-0" />
             <span className="font-semibold text-gray-900">Camera Scanner</span>
-            {scanning && !error && (
+            {scanning && permState === 'ready' && !error && (
               <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
                 Live
@@ -108,11 +137,84 @@ export default function CameraScanner({ onScan, onClose }) {
           </button>
         </div>
 
-        {error ? (
+        {/* Permission Request Screen */}
+        {permState === 'ask' && (
+          <div className="p-8 flex flex-col items-center text-center gap-4">
+            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center">
+              <ShieldCheck size={32} className="text-gray-700" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900 text-lg mb-1">Allow Camera Access</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">
+                To scan barcodes and QR codes, we need access to your camera.
+                Your browser will ask you to confirm.
+              </p>
+            </div>
+            <div className="flex gap-2 w-full">
+              <button
+                onClick={handleAllowCamera}
+                className="flex-1 bg-black text-white py-3 rounded-xl font-semibold text-sm hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+              >
+                <Camera size={16} />
+                Allow Camera
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-1 border border-gray-200 py-3 rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Checking state */}
+        {permState === 'checking' && (
+          <div className="p-8 flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-gray-500">Checking camera…</p>
+          </div>
+        )}
+
+        {/* Camera Denied Screen */}
+        {permState === 'denied' && (
+          <div className="p-6 flex flex-col items-center text-center gap-3">
+            <AlertCircle size={32} className="text-red-400" />
+            <div>
+              <p className="font-semibold text-gray-900 mb-1">Camera access blocked</p>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Your browser has blocked camera access for this site.
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4 text-left text-sm text-gray-600 space-y-1.5 w-full">
+              <p className="font-semibold text-gray-800">How to allow camera:</p>
+              <p>📱 <strong>iPhone/iPad:</strong> Settings → Safari → Camera → Allow</p>
+              <p>🤖 <strong>Android Chrome:</strong> tap 🔒 in address bar → Camera → Allow</p>
+              <p>💻 <strong>Desktop:</strong> click the camera icon in the address bar → Allow</p>
+            </div>
+            <div className="flex gap-2 w-full">
+              <button
+                onClick={handleAllowCamera}
+                className="flex-1 bg-black text-white py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2"
+              >
+                <RefreshCw size={14} /> Try Again
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-1 border border-gray-200 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Camera Error (non-permission) */}
+        {permState === 'ready' && error && (
           <div className="p-6 flex flex-col items-center text-center gap-3">
             <AlertCircle size={32} className="text-red-400" />
             <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{error}</p>
-            <div className="flex gap-2 mt-1 flex-wrap justify-center">
+            <div className="flex gap-2 mt-1">
               <button
                 onClick={() => start(frontCamera)}
                 className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-xl text-sm font-medium"
@@ -127,9 +229,11 @@ export default function CameraScanner({ onScan, onClose }) {
               </button>
             </div>
           </div>
-        ) : (
+        )}
+
+        {/* Camera View */}
+        {permState === 'ready' && !error && (
           <>
-            {/* Video — playsInline is REQUIRED on iOS Safari */}
             <div className="relative bg-black">
               <video
                 ref={videoRef}
@@ -138,8 +242,6 @@ export default function CameraScanner({ onScan, onClose }) {
                 muted
                 autoPlay
               />
-
-              {/* Scanning frame overlay */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="relative w-60 h-36">
                   <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-white rounded-tl-lg" />
@@ -154,13 +256,11 @@ export default function CameraScanner({ onScan, onClose }) {
                   )}
                 </div>
               </div>
-
               <p className="text-center text-xs text-white/80 bg-black/50 py-2">
                 {scanning ? 'Point at a barcode or QR code' : 'Starting camera…'}
               </p>
             </div>
 
-            {/* Switch camera */}
             <div className="p-3 border-t border-gray-100 flex justify-center">
               <button
                 onClick={switchCamera}
